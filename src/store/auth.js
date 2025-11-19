@@ -23,6 +23,13 @@ async function fetchProfile(authUserId){
   return { usuarioId: data.id, role: data.roles?.nombre };
 }
 
+// 👇 NUEVO: intenta cargar perfil si aún no está
+async function ensureProfileLoaded(){
+  if (session?.user && !profile) {
+    profile = await fetchProfile(session.user.id);
+  }
+}
+
 export function getUser(){ return session?.user || null; }
 export function getRole(){ return profile?.role || null; }
 export function getUsuarioId(){ return profile?.usuarioId || null; }
@@ -31,8 +38,15 @@ export async function guardAuth(){
   if (!getUser()) { location.hash = '#/login'; return false; }
   return true;
 }
+
 export async function guardRole(expected){
   const ok = await guardAuth();
-  if (!ok) return; // evita segunda redirección
-  if (getRole() !== expected) location.hash = '#/';
+  if (!ok) return; // ya redirigió al login
+
+  await ensureProfileLoaded(); // 🔑 asegúrate de tener el rol cargado
+
+  if (getRole() !== expected) {
+    // Redirige al home si el rol no coincide
+    location.hash = '#/';
+  }
 }

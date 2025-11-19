@@ -1,6 +1,7 @@
 import { AuthController } from '../../controllers/AuthController.js';
 import { bindForm } from '../../utils/forms.js';
 import { navigate } from '../../router/index.js';
+import { initAuth, getRole } from '../../store/auth.js';
 
 export default async function LoginView(){
   return `
@@ -80,7 +81,7 @@ export default async function LoginView(){
         <a href="#" class="back-button banner-back" data-action="back">&larr; Volver</a>
         <div class="banner-title">Iniciar sesión</div>
         <a href="#/" class="banner-logo" aria-label="Ir al inicio">
-          <img src="/assets/img/LogoCitasYa.png" alt="Citas Ya">
+          <img src="./assets/img/LogoCitasYa.png" alt="Citas Ya">
         </a>
       </div>
     </div>
@@ -108,11 +109,20 @@ export default async function LoginView(){
 export function onMount(){
   const backBtn = document.querySelector('[data-action="back"]');
   backBtn?.addEventListener('click', (ev) => { ev.preventDefault(); history.back(); });
+
   const form = document.getElementById('loginForm');
   if (form){
     bindForm(form, async (payload) => {
       await AuthController.login(payload);
-      navigate('/');
+
+      // 🔑 refresca sesión + perfil (rol)
+      await initAuth();
+      const role = getRole();
+
+ 
+      if (role === 'administrador')      navigate('/admin');
+      else if (role === 'barbero')       navigate('/barbero/mi-agenda');
+      else                               navigate('/cliente/agendar'); // cliente por defecto
     });
   }
 }
