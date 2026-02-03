@@ -6,5 +6,13 @@ export const AdminController = {
   },
   aprobar(id){
     return AdminService.approveBusiness(id);
+  },
+
+  // ✅ NUEVO
+  barberosPendientes(){
+    return AdminService.pendingBarbers();
+  },
+  aprobarBarbero(id){
+    return AdminService.approveBarber(id);
   }
 };

@@ -79,7 +79,7 @@ export default async function ClienteAgendarView(){
         <a href="#" class="back-button banner-back" data-action="back">&larr; Volver</a>
         <div class="banner-title">Programación de Citas</div>
         <a href="#/" class="banner-logo" aria-label="Ir al inicio">
-          <img src="/assets/img/LogoCitasYa.png" alt="Citas Ya">
+          <img src="assets/img/LogoCitasYa.png" alt="Citas Ya">
         </a>
       </div>
     </div>
