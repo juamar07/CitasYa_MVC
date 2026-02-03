@@ -1,78 +1,137 @@
 import { navigate } from '../../router/index.js';
 
-export default async function ClienteAgendarPublicoView({ query }){
+export default async function ClienteAgendarPublicoView({ query }) {
   const negocio = query.get('negocio') || '';
+
   return `
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;600&display=swap" rel="stylesheet">
+
   <style>
-    body{ font-family:'Open Sans',sans-serif; background:#f0f2f5; margin:0; padding:20px; }
-    .container{ max-width:920px; margin:0 auto; background:#fff; padding:24px; border-radius:12px; box-shadow:0 6px 20px rgba(15,23,42,.08); border-left:4px solid #5c6bc0; }
-    header{ display:flex; justify-content:space-between; align-items:center; margin-bottom:24px; }
-    header img{ width:52px; }
-    h1{ margin:0 0 12px; font-size:28px; }
-    label{ display:block; margin:12px 0 6px; color:#003366; font-weight:600; }
-    input, select, textarea{ width:100%; padding:12px; border:2px solid #d7dbe3; border-radius:8px; font-size:16px; box-sizing:border-box; }
-    textarea{ min-height:90px; resize:vertical; }
-    .actions{ display:grid; gap:12px; grid-template-columns:repeat(auto-fit, minmax(180px,1fr)); margin-top:24px; }
-    button{ border:none; border-radius:8px; padding:14px 18px; font-weight:700; cursor:pointer; color:#fff; font-size:16px; transition:transform .2s ease, box-shadow .2s ease; }
-    button:hover{ transform:translateY(-1px); box-shadow:0 10px 18px rgba(92,107,192,.25); }
-    .btn-primary{ background:#5c6bc0; }
-    .btn-green{ background:#66BB6A; }
-    .btn-outline{ background:#eff2f9; color:#233247; }
-    nav a{ margin-left:12px; color:#5c6bc0; font-weight:600; text-decoration:none; }
-    nav a:hover{ text-decoration:underline; }
+    ${/* === Pega AQUÍ TODO el CSS de :root hasta .legal-outside del MVP === */''}
   </style>
-  <div class="container">
-    <header>
-      <div>
-        <h1>Agendar cita rápida</h1>
-        <p>Reserva sin necesidad de iniciar sesión.</p>
+
+  <!-- Banner -->
+  <header class="app-banner" role="banner">
+    <div class="banner-box">
+      <div class="banner-inner">
+        <!-- Menú hamburguesa -->
+        <button id="btn_burger" class="burger" aria-label="Abrir menú">
+          <span></span><span></span><span></span>
+        </button>
+
+        <div class="banner-title">Bienvenido a Citas Ya</div>
+
+        <!-- ✅ Logo con ruta correcta (GitHub Pages) -->
+        <a class="banner-logo" href="#/">
+          <img src="assets/img/LogoCitasYa.png" alt="Citas Ya">
+        </a>
+
+        <!-- menú contextual -->
+        <nav id="menu" class="menu" aria-label="Menú rápido">
+          <a href="#" data-go="/login">Iniciar sesión</a>
+          <a href="#" data-go="/registro">Registrarme</a>
+          <a href="#" data-go="/barbero/registrar-negocio">Registrar mi negocio</a>
+        </nav>
       </div>
-      <div>
-        <img src="/assets/img/LogoCitasYa.png" alt="Citas Ya">
-      </div>
-    </header>
-    <nav>
-      <a href="#/login">Iniciar sesión</a>
-      <a href="#/registro">Registrarme</a>
-      <a href="#/barbero/registrar-negocio">Registrar negocio</a>
-    </nav>
-    <section>
-      <label for="public_negocio">Establecimiento</label>
-      <input id="public_negocio" value="${negocio}" placeholder="Ej: Barbería Central" />
-      <label for="public_servicio">Servicio</label>
-      <select id="public_servicio">
-        <option value="">Selecciona un servicio</option>
-      </select>
-      <label for="public_barbero">Profesional</label>
-      <select id="public_barbero">
-        <option value="">Selecciona un barbero</option>
-      </select>
-      <label for="public_fecha">Fecha</label>
-      <input type="date" id="public_fecha" />
-      <label for="public_hora">Hora</label>
-      <select id="public_hora">
-        <option value="">Selecciona fecha y servicio</option>
-      </select>
-      <label for="public_notas">Notas</label>
-      <textarea id="public_notas" placeholder="Indica preferencias o información adicional"></textarea>
-    </section>
-    <div class="actions">
-      <button class="btn-green" id="public_agendar">Programar cita</button>
-      <button class="btn-outline" id="public_ir_login">Ir al inicio</button>
     </div>
-  </div>`;
+  </header>
+
+  <div class="container">
+    <h1>Programación de Citas</h1>
+
+    <label>Ingrese nombre completo del asistente</label>
+    <input type="text" id="asistente">
+
+    <label>Ingrese el nombre del establecimiento</label>
+    <input type="text" id="bizName" list="bizlist" placeholder="Escribe el nombre" value="${negocio}">
+    <datalist id="bizlist"></datalist>
+
+    <div style="display:flex; align-items:center; gap:10px; margin-top:8px;">
+      <label style="display:flex; align-items:center; gap:8px; margin:0;">
+        <input type="checkbox" id="dontKnow"> ¿No recuerda el nombre del establecimiento?
+      </label>
+      <button type="button" id="btnMap" class="btn btn-pri" style="width:auto; display:none; margin:0;">Buscar por mapa</button>
+    </div>
+    <div class="hint">La búsqueda ignora mayúsculas y acentos.</div>
+
+    <label>Seleccione el servicio</label>
+    <select id="servicio"><option value="">— Seleccione —</option></select>
+    <div id="duracionHint" class="hint">Duración: —</div>
+
+    <label>Seleccione el barbero</label>
+    <select id="barbero"><option value="">— Seleccione —</option></select>
+
+    <div class="row-2">
+      <div>
+        <label>Seleccione la fecha de la cita</label>
+        <input type="date" id="fecha">
+      </div>
+      <div>
+        <label>Seleccione la hora de la cita</label>
+        <select id="timeSel" disabled>
+          <option value="">— Selecciona fecha, servicio y barbero —</option>
+        </select>
+        <div id="timeHelp" class="hint"></div>
+      </div>
+    </div>
+
+    <button id="btn_programar" class="btn btn-green w-75 btn-center">Programar cita</button>
+
+    <textarea id="resumen" class="w-75 btn-center" style="width:100%;min-height:68px;" placeholder="Aquí verás el resumen de tu cita…"></textarea>
+
+    <div class="row-2">
+      <button id="btn_comentario" class="btn btn-pri">Déjanos tu comentario</button>
+      <button id="btn_cancelar" class="btn btn-red">Cancelar una cita</button>
+    </div>
+
+    <p class="hint" style="text-align:center;margin-top:18px;">Reserva y gestiona tu agenda en minutos.</p>
+  </div>
+
+  <div class="legal-outside">
+    Todos los derechos reservados © 2025<br>
+    Citas Ya S.A.S - Nit 810.000.000-0
+  </div>
+
+  <!-- Modal de acceso -->
+  <div id="modalAuth" class="modal" role="dialog" aria-modal="true" aria-labelledby="ttlAuth">
+    <div class="box">
+      <h3 id="ttlAuth">Antes de continuar</h3>
+      <p>Para completar esta acción, por favor inicia sesión o regístrate.</p>
+      <div class="actions">
+        <button id="m_reg" class="btn btn-pri">Registrarme</button>
+        <button id="m_login" class="btn btn-green">Iniciar sesión</button>
+        <button id="m_close" class="btn btn-red">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Buscar por mapa (solo UI por ahora; no cambia estética) -->
+  <div id="modalMap" class="map-modal" aria-modal="true" role="dialog">
+    <div class="box">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <h3 style="margin:0;">Buscar establecimiento</h3>
+        <button id="closeMap" class="btn btn-red" style="width:auto; margin:0;">Cerrar</button>
+      </div>
+      <p class="hint" style="margin-top:-6px;">Selecciona tu barbería de la lista o abre su ubicación en el mapa.</p>
+      <div id="bizList" class="map-grid"></div>
+      <p class="hint" style="margin-top:8px;">* “Ver en mapa” abre Google Maps con la ubicación registrada (si tiene lat/lng).</p>
+    </div>
+  </div>
+  `;
 }
 
 export function onMount() {
   // Menú hamburguesa
   const burger = document.getElementById('btn_burger');
   const menu = document.getElementById('menu');
-  burger?.addEventListener('click', () => {
+  burger?.addEventListener('click', (e) => {
+    e.stopPropagation();
     if (!menu) return;
     menu.style.display = (menu.style.display === 'block') ? 'none' : 'block';
   });
+  document.addEventListener('click', () => { if (menu) menu.style.display = 'none'; });
 
-  // Navegación del menú (si usas data-go)
+  // Navegación del menú
   document.querySelectorAll('#menu [data-go]').forEach(a => {
     a.addEventListener('click', (ev) => {
       ev.preventDefault();
@@ -81,18 +140,29 @@ export function onMount() {
     });
   });
 
-  // Modal de login
+  // Modal login (obligatorio para Programar / Comentario / Cancelar)
   const modal = document.getElementById('modalAuth');
   const openModal = () => { if (modal) modal.style.display = 'flex'; };
   const closeModal = () => { if (modal) modal.style.display = 'none'; };
 
-  // Requiere login en las 3 acciones
   document.getElementById('btn_programar')?.addEventListener('click', (ev) => { ev.preventDefault(); openModal(); });
   document.getElementById('btn_comentario')?.addEventListener('click', (ev) => { ev.preventDefault(); openModal(); });
   document.getElementById('btn_cancelar')?.addEventListener('click', (ev) => { ev.preventDefault(); openModal(); });
 
-  // Botones del modal
   document.getElementById('m_login')?.addEventListener('click', () => navigate('/login'));
   document.getElementById('m_reg')?.addEventListener('click', () => navigate('/registro'));
   document.getElementById('m_close')?.addEventListener('click', closeModal);
+
+  // Modal mapa (solo abrir/cerrar UI)
+  const dontKnow = document.getElementById('dontKnow');
+  const btnMap = document.getElementById('btnMap');
+  const modalMap = document.getElementById('modalMap');
+  const closeMap = document.getElementById('closeMap');
+
+  dontKnow?.addEventListener('change', () => {
+    if (btnMap) btnMap.style.display = dontKnow.checked ? 'inline-block' : 'none';
+  });
+  btnMap?.addEventListener('click', () => { if (modalMap) modalMap.style.display = 'flex'; });
+  closeMap?.addEventListener('click', () => { if (modalMap) modalMap.style.display = 'none'; });
+  modalMap?.addEventListener('click', (e) => { if (e.target === modalMap) modalMap.style.display = 'none'; });
 }
