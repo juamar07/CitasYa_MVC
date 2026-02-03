@@ -63,6 +63,36 @@ export default async function ClienteAgendarPublicoView({ query }){
   </div>`;
 }
 
-export function onMount(){
-  document.getElementById('public_ir_login')?.addEventListener('click', () => navigate('/'));
+export function onMount() {
+  // Menú hamburguesa
+  const burger = document.getElementById('btn_burger');
+  const menu = document.getElementById('menu');
+  burger?.addEventListener('click', () => {
+    if (!menu) return;
+    menu.style.display = (menu.style.display === 'block') ? 'none' : 'block';
+  });
+
+  // Navegación del menú (si usas data-go)
+  document.querySelectorAll('#menu [data-go]').forEach(a => {
+    a.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      const to = a.getAttribute('data-go');
+      if (to) navigate(to);
+    });
+  });
+
+  // Modal de login
+  const modal = document.getElementById('modalAuth');
+  const openModal = () => { if (modal) modal.style.display = 'flex'; };
+  const closeModal = () => { if (modal) modal.style.display = 'none'; };
+
+  // Requiere login en las 3 acciones
+  document.getElementById('btn_programar')?.addEventListener('click', (ev) => { ev.preventDefault(); openModal(); });
+  document.getElementById('btn_comentario')?.addEventListener('click', (ev) => { ev.preventDefault(); openModal(); });
+  document.getElementById('btn_cancelar')?.addEventListener('click', (ev) => { ev.preventDefault(); openModal(); });
+
+  // Botones del modal
+  document.getElementById('m_login')?.addEventListener('click', () => navigate('/login'));
+  document.getElementById('m_reg')?.addEventListener('click', () => navigate('/registro'));
+  document.getElementById('m_close')?.addEventListener('click', closeModal);
 }
