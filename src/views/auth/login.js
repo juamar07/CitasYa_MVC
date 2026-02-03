@@ -118,6 +118,13 @@ export function onMount(){
       // 🔑 refresca sesión + perfil (rol)
       await initAuth();
       const role = getRole();
+      
+      const redirectTo = sessionStorage.getItem('redirectTo');
+      if (redirectTo) {
+        sessionStorage.removeItem('redirectTo');
+        navigate(redirectTo);
+        return;
+      }
 
  
       if (role === 'administrador')      navigate('/admin');

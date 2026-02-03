@@ -35,18 +35,27 @@ export function getRole(){ return profile?.role || null; }
 export function getUsuarioId(){ return profile?.usuarioId || null; }
 
 export async function guardAuth(){
-  if (!getUser()) { location.hash = '#/login'; return false; }
-  return true;
-}
+  if (!getUser()) {
+        // ✅ guarda a dónde quería ir (path + query)
+        const target = location.hash.slice(1) || '/';
+        sessionStorage.setItem('redirectTo', target);
 
-export async function guardRole(expected){
-  const ok = await guardAuth();
-  if (!ok) return; // ya redirigió al login
+        location.hash = '#/login';
+        return false;
+      }
+      return true;
+    }
 
-  await ensureProfileLoaded(); // 🔑 asegúrate de tener el rol cargado
+    export async function guardRole(expected){
+      const ok = await guardAuth();
+      if (!ok) return false;
 
-  if (getRole() !== expected) {
-    // Redirige al home si el rol no coincide
-    location.hash = '#/';
-  }
-}
+      await ensureProfileLoaded();
+
+      if (getRole() !== expected) {
+        // ✅ ya está logueado, pero no tiene rol permitido: no mandes a login
+        location.hash = '#/';
+        return false;
+      }
+      return true;
+    }

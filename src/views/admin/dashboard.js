@@ -148,7 +148,6 @@ export default async function AdminDashboardView() {
       </table>
 
       <div class="muted" style="margin-top:10px;">
-        Nota: En este MVC solo está implementada la aprobación de <b>negocios</b>. Si quieres aprobar también <b>barberos/personal</b>, necesitamos confirmar si la tabla <b>personal</b> tiene un campo <b>estado</b> (ej. 'pendiente') y crear la consulta/acción correspondiente.
       </div>
     </div>
   </div>
@@ -156,7 +155,7 @@ export default async function AdminDashboardView() {
 }
 
 export function onMount() {
-  
+
   document.addEventListener('click', async (e) => {
     const btn = e.target?.closest?.('.approve-barber');
     if (!btn) return;
