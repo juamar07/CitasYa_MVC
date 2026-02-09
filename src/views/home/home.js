@@ -4,21 +4,20 @@ import { initAuth, getUser, getRole } from '../../store/auth.js';
 import { AuthController } from '../../controllers/AuthController.js';
 
 export default async function HomeView(){
-  // ✅ asegura sesión/rol disponibles para render dinámico del menú
   await initAuth();
 
   const user = getUser();
   const role = getRole();
 
   const negocios = await ctrl.loadHome();
-  const cards = (negocios||[]).map(n=>`
+  const cards = (negocios || []).map(n => `
     <li>
       <strong>${n.nombre}</strong><br/>
-      <small>${n.direccion??''}</small><br/>
+      <small>${n.direccion ?? ''}</small><br/>
       <a href="#/cliente/agendar-publico?negocio=${n.id}">Agendar</a>
-    </li>`).join('');
+    </li>
+  `).join('');
 
-  // Menú dinámico
   const menuItemsLoggedOut = `
     <button class="menu-item" data-menu="login">Iniciar sesión</button>
     <button class="menu-item" data-menu="register">Registrarme</button>
@@ -85,14 +84,7 @@ export default async function HomeView(){
       gap: 8px; width: 100%; padding: 0 12px;
     }
 
-    /* ✅ contenedor del menú: relativo para anclar dropdown */
-    .banner-left{
-      justify-self: start;
-      position: relative;
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-    }
+    .banner-left{ justify-self: start; position: relative; display: inline-flex; align-items:center; gap:8px; }
     .menu-btn{
       width: 40px; height: 40px;
       border: 1px solid var(--btn-blue);
@@ -107,7 +99,6 @@ export default async function HomeView(){
     }
     .menu-btn:hover{ background: rgba(92,107,192,.08); }
 
-    /* ✅ dropdown: pegado al botón y “más centrado” */
     .dropdown{
       position: absolute;
       top: 48px;
@@ -140,7 +131,6 @@ export default async function HomeView(){
     .banner-logo{ justify-self: end; display: inline-flex; align-items: center; }
     .banner-logo img{ width: 52px; height: auto; display: block; }
 
-    /* resto (no tocado) */
     h2{ margin-top: 24px; }
     .home-public-list {
       list-style: none;
@@ -171,6 +161,28 @@ export default async function HomeView(){
     }
   </style>
 
+  <header class="app-banner" role="banner">
+    <div class="banner-box">
+      <div class="banner-inner">
+        <div class="banner-left">
+          <button class="menu-btn" id="menuBtn" aria-label="Abrir menú">☰</button>
+          <div class="dropdown" id="dropdownMenu" role="menu" aria-label="Menú">
+            ${user ? menuItemsLoggedIn : menuItemsLoggedOut}
+            ${user ? `<div style="padding:8px 10px;color:#666;font-size:12px;border-top:1px solid #eee;margin-top:6px;">
+              Sesión: ${role || '...'}
+            </div>` : ''}
+          </div>
+        </div>
+
+        <div class="banner-title">Bienvenido a Citas Ya</div>
+
+        <a href="#/" class="banner-logo" aria-label="Ir al inicio">
+          <img src="./assets/img/LogoCitasYa.png" alt="Citas Ya">
+        </a>
+      </div>
+    </div>
+  </header>
+
   <div class="container">
     <section>
       <h2>Barberías destacadas</h2>
@@ -191,20 +203,17 @@ export function onMount(){
   const menuBtn = document.getElementById('menuBtn');
   const dropdown = document.getElementById('dropdownMenu');
 
-  function closeMenu(){
-    dropdown?.classList.remove('open');
-  }
+  function closeMenu(){ dropdown?.classList.remove('open'); }
 
   menuBtn?.addEventListener('click', (ev) => {
     ev.preventDefault();
     dropdown?.classList.toggle('open');
   });
 
-  // cerrar al hacer click fuera
   document.addEventListener('click', (ev) => {
     if (!dropdown || !menuBtn) return;
-    const target = ev.target;
-    if (dropdown.contains(target) || menuBtn.contains(target)) return;
+    const t = ev.target;
+    if (dropdown.contains(t) || menuBtn.contains(t)) return;
     closeMenu();
   });
 
@@ -215,16 +224,16 @@ export function onMount(){
     const action = btn.getAttribute('data-menu');
     closeMenu();
 
-    // ✅ si ya había sesión y el usuario elige login/registro: logout automático
     if (action === 'login'){
-      const user = (await import('../../store/auth.js')).getUser();
-      if (user) await AuthController.logout();
+      const { getUser } = await import('../../store/auth.js');
+      if (getUser()) await AuthController.logout();
       navigate('/login');
       return;
     }
+
     if (action === 'register'){
-      const user = (await import('../../store/auth.js')).getUser();
-      if (user) await AuthController.logout();
+      const { getUser } = await import('../../store/auth.js');
+      if (getUser()) await AuthController.logout();
       navigate('/registro');
       return;
     }

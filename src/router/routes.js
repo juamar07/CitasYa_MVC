@@ -1,13 +1,11 @@
 import { guardAuth, guardRole } from '../store/auth.js';
 
 export default [
-  { path: '/', component: () => import('../views/cliente/agendar_publico.js') },
+  // ✅ Home real con menú (NO agendar_publico)
+  { path: '/', component: () => import('../views/home/home.js') },
 
   { path: '/login', component: () => import('../views/auth/login.js') },
   { path: '/registro', component: () => import('../views/auth/register_cliente.js') },
-
-  // ✅ NUEVA RUTA: Mi perfil (placeholder)
-  { path: '/perfil', guard: () => guardAuth(), component: () => import('../views/comun/perfil.js') },
 
   { path: '/cliente/agendar', guard: () => guardRole('usuario'), component: () => import('../views/cliente/agendar.js') },
   { path: '/cliente/agendar-publico', component: () => import('../views/cliente/agendar_publico.js') },
@@ -18,6 +16,9 @@ export default [
   { path: '/barbero/registrar-negocio', guard: () => guardRole('barbero'), component: () => import('../views/barbero/registrar_negocio.js') },
 
   { path: '/admin', guard: () => guardRole('administrador'), component: () => import('../views/admin/dashboard.js') },
+
+  // ✅ NUEVO: vista simbólica "Mi perfil"
+  { path: '/perfil', guard: () => guardAuth(), component: () => import('../views/comun/perfil.js') },
 
   { path: '/comentarios', guard: () => guardAuth(), component: () => import('../views/comun/comentarios.js') },
   { path: '/pagos',       guard: () => guardAuth(), component: () => import('../views/comun/pagos.js') },
