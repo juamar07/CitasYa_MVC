@@ -171,28 +171,6 @@ export default async function HomeView(){
     }
   </style>
 
-  <header class="app-banner" role="banner">
-    <div class="banner-box">
-      <div class="banner-inner">
-        <div class="banner-left">
-          <button class="menu-btn" id="menuBtn" aria-label="Abrir menú">☰</button>
-          <div class="dropdown" id="dropdownMenu" role="menu" aria-label="Menú">
-            ${user ? menuItemsLoggedIn : menuItemsLoggedOut}
-            ${user ? `<div style="padding:8px 10px;color:#666;font-size:12px;border-top:1px solid #eee;margin-top:6px;">
-              Sesión: ${role || '...'}
-            </div>` : ''}
-          </div>
-        </div>
-
-        <div class="banner-title">Bienvenido a Citas Ya</div>
-
-        <a href="#/" class="banner-logo" aria-label="Ir al inicio">
-          <img src="./assets/img/LogoCitasYa.png" alt="Citas Ya">
-        </a>
-      </div>
-    </div>
-  </header>
-
   <div class="container">
     <section>
       <h2>Barberías destacadas</h2>
