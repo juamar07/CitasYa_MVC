@@ -7,14 +7,17 @@ async function resolveNegocioId(){
 
   const negocios = data || [];
   if (!negocios.length) {
-    // Sin negocio asociado → no se puede comprar tokens
     throw new Error('No tienes un negocio asociado. Registra o asóciate a un negocio para comprar tokens.');
   }
-  // Regla: usar el primer negocio del barbero (si manejas múltiples, luego lo hacemos seleccionable)
   return negocios[0].id;
 }
 
 export const PaymentService = {
+  // ✅ Alias para que PagosController no reviente
+  async myPayments(){
+    return this.listMine();
+  },
+
   async listMine(){
     const negocioId = await resolveNegocioId();
     return CompraModel.listByNegocio(negocioId);
@@ -23,8 +26,6 @@ export const PaymentService = {
   async create(payload){
     const negocioId = await resolveNegocioId();
 
-    // Acepta payload desde UI: { tokens, monto_cop, metodo_id, estado_id, ref_externa }
-    // Si vienen con nombres antiguos, los mapeamos sin romper:
     const metodo_id = payload.metodo_id ?? payload.metodo_pago_id ?? payload.metodoId;
     const estado_id = payload.estado_id ?? payload.estado_pago_id ?? payload.estadoId;
     const tokens    = payload.tokens ?? payload.tokens_compra ?? null;

@@ -1,7 +1,15 @@
 import { ClienteAppointmentsController as ctrl } from '../../controllers/ClienteAppointmentsController.js';
 import { navigate } from '../../router/index.js';
+import { initAuth, getUser, getRole } from '../../store/auth.js';
+import { AuthController } from '../../controllers/AuthController.js';
 
 export default async function HomeView(){
+  // ✅ asegura sesión/rol disponibles para render dinámico del menú
+  await initAuth();
+
+  const user = getUser();
+  const role = getRole();
+
   const negocios = await ctrl.loadHome();
   const cards = (negocios||[]).map(n=>`
     <li>
@@ -9,6 +17,22 @@ export default async function HomeView(){
       <small>${n.direccion??''}</small><br/>
       <a href="#/cliente/agendar-publico?negocio=${n.id}">Agendar</a>
     </li>`).join('');
+
+  // Menú dinámico
+  const menuItemsLoggedOut = `
+    <button class="menu-item" data-menu="login">Iniciar sesión</button>
+    <button class="menu-item" data-menu="register">Registrarme</button>
+    <button class="menu-item" data-menu="registerBiz">Registrar mi negocio</button>
+  `;
+
+  const menuItemsLoggedIn = `
+    <button class="menu-item" data-menu="login">Iniciar sesión</button>
+    <button class="menu-item" data-menu="register">Registrarme</button>
+    <button class="menu-item" data-menu="registerBiz">Registrar mi negocio</button>
+    <button class="menu-item" data-menu="perfil">Mi perfil</button>
+    <button class="menu-item danger" data-menu="logout">Cerrar sesión</button>
+  `;
+
   return `
   <style>
     :root{
@@ -19,6 +43,7 @@ export default async function HomeView(){
       --page-sidepad: 16px;
       --banner-bg: #e6e9ee;
       --banner-bg-hover: #d7dbe3;
+      --btn-blue:#5c6bc0;
     }
     body {
       font-family: 'Open Sans', sans-serif;
@@ -35,36 +60,9 @@ export default async function HomeView(){
       background-color: #ffffff;
       box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
       border-radius: 10px;
-      border-left: var(--container-bl) solid #5c6bc0;
+      border-left: var(--container-bl) solid var(--btn-blue);
     }
-    h1 { text-align: center; color: #000; font-size: 24px; font-weight: 600; margin-bottom: 20px; }
-    button {
-      display: block; width: 100%; margin: 10px 0;
-      border: none; padding: 15px 20px; border-radius: 5px;
-      cursor: pointer; font-weight: 600; transition: background-color 0.3s, transform 0.3s;
-      color: white; font-size: 16px;
-    }
-    .btn-inicio { background-color: #5c6bc0; }
-    .btn-inicio:hover { background-color: #3f51b5; transform: translateY(-2px); }
-    .btn-registrar { background-color: #66BB6A; }
-    .btn-registrar:hover { background-color: #57A05D; transform: translateY(-2px); }
-    .btn-slim {
-      width: min(640px, 75%);
-      margin-left: auto;
-      margin-right: auto;
-    }
-    .btn-row-2{
-      width: min(640px, 75%);
-      margin: 10px auto;
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-    }
-    @media (max-width: 560px){
-      .btn-slim{ width: 100%; }
-      .btn-row-2{ width: 100%; grid-template-columns: 1fr; }
-    }
-    footer { text-align: center; font-size: 14px; color: #555; margin-top: 20px; }
+
     .app-banner{
       position: fixed; top: 0; left: 0; right: 0; height: var(--banner-h);
       z-index: 9999; background: transparent;
@@ -86,40 +84,68 @@ export default async function HomeView(){
       display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
       gap: 8px; width: 100%; padding: 0 12px;
     }
-    .banner-back{ justify-self: start; }
+
+    /* ✅ contenedor del menú: relativo para anclar dropdown */
+    .banner-left{
+      justify-self: start;
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .menu-btn{
+      width: 40px; height: 40px;
+      border: 1px solid var(--btn-blue);
+      background: transparent;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 20px;
+      color: var(--btn-blue);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .menu-btn:hover{ background: rgba(92,107,192,.08); }
+
+    /* ✅ dropdown: pegado al botón y “más centrado” */
+    .dropdown{
+      position: absolute;
+      top: 48px;
+      left: 0;
+      width: 240px;
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 10px 25px rgba(0,0,0,.12);
+      border: 1px solid rgba(0,0,0,.08);
+      padding: 10px;
+      display: none;
+    }
+    .dropdown.open{ display: block; }
+
+    .menu-item{
+      width: 100%;
+      text-align: left;
+      border: none;
+      background: transparent;
+      padding: 10px 10px;
+      cursor: pointer;
+      border-radius: 8px;
+      font-size: 15px;
+      color: #233247;
+    }
+    .menu-item:hover{ background: #f2f4f8; }
+    .menu-item.danger{ color: #b00020; }
+
     .banner-title{ justify-self: center; font-weight: 700; color: #233247; }
     .banner-logo{ justify-self: end; display: inline-flex; align-items: center; }
     .banner-logo img{ width: 52px; height: auto; display: block; }
-    .back-button{
-      display:inline-block; text-decoration:none; font-size:14px; color:#5c6bc0;
-      padding:8px 12px; border:1px solid #5c6bc0; border-radius:6px;
-      transition: background-color .2s, color .2s;
-    }
-    .back-button:hover{ background:#5c6bc0; color:#fff; }
-    .legal-outside{
-      margin: 18px auto 24px;
-      padding: 10px 12px;
-      max-width: calc(var(--container-w) + var(--container-pad)*2 + var(--container-bl));
-      text-align: center; color: #666; font-size: 14px; line-height: 1.35;
-    }
-    .dev-shortcuts {
-      margin-top: 24px; padding: 12px; border: 1px dashed #999;
-      border-radius: 8px; background: #fafafa;
-    }
-    .dev-shortcuts h2 { font-size: 14px; margin: 0 0 10px; color: #666; }
-    .btn-dev { background-color: #009688; }
-    .btn-dev:hover { background-color: #00796B; }
-    .btn-dev-alt { background-color: #8D6E63; }
-    .btn-dev-alt:hover { background-color: #6D4C41; }
-    @media (max-width: 768px) {
-      .container { width: 100%; padding: 10px; }
-      h1, .banner-title { font-size: 20px; }
-      button { font-size: 14px; }
-    }
+
+    /* resto (no tocado) */
+    h2{ margin-top: 24px; }
     .home-public-list {
       list-style: none;
       padding: 0;
-      margin: 30px auto 0;
+      margin: 20px auto 0;
       max-width: 420px;
       display: grid;
       gap: 12px;
@@ -133,40 +159,50 @@ export default async function HomeView(){
     .home-public-list a {
       display: inline-block;
       margin-top: 6px;
-      color: #5c6bc0;
+      color: var(--btn-blue);
       font-weight: 600;
     }
+
+    .legal-outside{
+      margin: 18px auto 24px;
+      padding: 10px 12px;
+      max-width: calc(var(--container-w) + var(--container-pad)*2 + var(--container-bl));
+      text-align: center; color: #666; font-size: 14px; line-height: 1.35;
+    }
   </style>
+
   <header class="app-banner" role="banner">
     <div class="banner-box">
       <div class="banner-inner">
-        <a href="#" class="back-button banner-back" data-action="back">&larr; Volver</a>
+        <div class="banner-left">
+          <button class="menu-btn" id="menuBtn" aria-label="Abrir menú">☰</button>
+          <div class="dropdown" id="dropdownMenu" role="menu" aria-label="Menú">
+            ${user ? menuItemsLoggedIn : menuItemsLoggedOut}
+            ${user ? `<div style="padding:8px 10px;color:#666;font-size:12px;border-top:1px solid #eee;margin-top:6px;">
+              Sesión: ${role || '...'}
+            </div>` : ''}
+          </div>
+        </div>
+
         <div class="banner-title">Bienvenido a Citas Ya</div>
+
         <a href="#/" class="banner-logo" aria-label="Ir al inicio">
           <img src="./assets/img/LogoCitasYa.png" alt="Citas Ya">
         </a>
       </div>
     </div>
   </header>
+
   <div class="container">
-    <section>
-      <button id="btn_login" class="btn-inicio btn-slim">Iniciar Sesión</button>
-      <button id="btn_registrar_cliente" class="btn-registrar btn-slim">Registrarse</button>
-    </section>
     <section>
       <h2>Barberías destacadas</h2>
       <ul class="home-public-list">${cards}</ul>
     </section>
-    <section class="dev-shortcuts" aria-label="Accesos temporales de desarrollo">
-      <h2>Accesos rápidos (temporal)</h2>
-      <button id="dev_ir_agendar" class="btn-dev">Ir a: Agendar una cita (Cliente)</button>
-      <button id="dev_ir_organizar" class="btn-dev">Ir a: Organizar agenda (Barbero)</button>
-      <button id="dev_ir_admin" class="btn-dev-alt">Ir a: Administrador</button>
-    </section>
-    <footer>
+    <footer style="text-align:center;margin-top:18px;">
       <p>Reserva servicios y gestiona tu agenda en minutos.</p>
     </footer>
   </div>
+
   <div class="legal-outside">
     Todos los derechos reservados © 2025<br>
     Citas Ya S.A.S - Nit 810.000.000-0
@@ -174,11 +210,61 @@ export default async function HomeView(){
 }
 
 export function onMount(){
-  const backBtn = document.querySelector('[data-action="back"]');
-  backBtn?.addEventListener('click', (ev) => { ev.preventDefault(); history.back(); });
-  document.getElementById('btn_login')?.addEventListener('click', () => navigate('/login'));
-  document.getElementById('btn_registrar_cliente')?.addEventListener('click', () => navigate('/registro'));
-  document.getElementById('dev_ir_agendar')?.addEventListener('click', () => navigate('/cliente/agendar'));
-  document.getElementById('dev_ir_organizar')?.addEventListener('click', () => navigate('/barbero/organizar-agenda'));
-  document.getElementById('dev_ir_admin')?.addEventListener('click', () => navigate('/admin'));
+  const menuBtn = document.getElementById('menuBtn');
+  const dropdown = document.getElementById('dropdownMenu');
+
+  function closeMenu(){
+    dropdown?.classList.remove('open');
+  }
+
+  menuBtn?.addEventListener('click', (ev) => {
+    ev.preventDefault();
+    dropdown?.classList.toggle('open');
+  });
+
+  // cerrar al hacer click fuera
+  document.addEventListener('click', (ev) => {
+    if (!dropdown || !menuBtn) return;
+    const target = ev.target;
+    if (dropdown.contains(target) || menuBtn.contains(target)) return;
+    closeMenu();
+  });
+
+  dropdown?.addEventListener('click', async (ev) => {
+    const btn = ev.target.closest('[data-menu]');
+    if (!btn) return;
+
+    const action = btn.getAttribute('data-menu');
+    closeMenu();
+
+    // ✅ si ya había sesión y el usuario elige login/registro: logout automático
+    if (action === 'login'){
+      const user = (await import('../../store/auth.js')).getUser();
+      if (user) await AuthController.logout();
+      navigate('/login');
+      return;
+    }
+    if (action === 'register'){
+      const user = (await import('../../store/auth.js')).getUser();
+      if (user) await AuthController.logout();
+      navigate('/registro');
+      return;
+    }
+
+    if (action === 'registerBiz'){
+      navigate('/barbero/registrar-negocio');
+      return;
+    }
+
+    if (action === 'perfil'){
+      navigate('/perfil');
+      return;
+    }
+
+    if (action === 'logout'){
+      await AuthController.logout();
+      navigate('/');
+      return;
+    }
+  });
 }
