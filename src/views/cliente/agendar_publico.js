@@ -74,8 +74,15 @@ export default async function ClienteAgendarPublicoView({ query }) {
       display:flex; align-items:center; transition:background .2s;
     }
     .app-banner .banner-box:hover{ background:var(--banner-bg-hover); }
-    .app-banner .banner-inner{ display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:10px; width:100%; padding:0 12px; }
-    .banner-title{ justify-self:center; font-weight:700; color:#233247; }
+    .app-banner .banner-inner{
+      position: relative;
+      display:grid;
+      grid-template-columns:auto 1fr auto;
+      align-items:center;
+      gap:10px;
+      width:100%;
+      padding:0 12px;
+    }
     .banner-logo img{ width:52px; display:block; }
     /* Menú hamburguesa */
     .burger{ width:42px; height:42px; border-radius:8px; display:inline-grid; place-items:center; border:1px solid #bfc9d9; background:#fff; cursor:pointer; }
@@ -118,11 +125,7 @@ export default async function ClienteAgendarPublicoView({ query }) {
         </a>
 
         <!-- menú contextual -->
-        <nav id="menu" class="menu" aria-label="Menú rápido">
-          <a href="#" data-go="/login">Iniciar sesión</a>
-          <a href="#" data-go="/registro">Registrarme</a>
-          <a href="#" data-go="/barbero/registrar-negocio">Registrar mi negocio</a>
-        </nav>
+         <nav id="menu" class="menu" aria-label="Menú rápido"></nav>
       </div>
     </div>
   </header>
@@ -215,6 +218,7 @@ export function onMount() {
   // Menú hamburguesa
   const burger = document.getElementById('btn_burger');
   const menu = document.getElementById('menu');
+  menu?.addEventListener('click', (e) => e.stopPropagation());
   burger?.addEventListener('click', (e) => {
     e.stopPropagation();
     if (!menu) return;
@@ -223,13 +227,79 @@ export function onMount() {
   document.addEventListener('click', () => { if (menu) menu.style.display = 'none'; });
 
   // Navegación del menú
-  document.querySelectorAll('#menu [data-go]').forEach(a => {
-    a.addEventListener('click', (ev) => {
-      ev.preventDefault();
-      const to = a.getAttribute('data-go');
-      if (to) navigate(to);
+    // ✅ Menú dinámico según sesión
+  (async () => {
+    const { initAuth, getUser, getRole } = await import('../../store/auth.js');
+    const { AuthController } = await import('../../controllers/AuthController.js');
+
+    await initAuth();
+
+    const user = getUser();
+    const role = getRole();
+    const menuEl = document.getElementById('menu');
+    if (!menuEl) return;
+
+    // Render items
+    if (!user) {
+      menuEl.innerHTML = `
+        <a href="#" data-action="login">Iniciar sesión</a>
+        <a href="#" data-action="register">Registrarme</a>
+        <a href="#" data-action="registerBiz">Registrar mi negocio</a>
+      `;
+    } else {
+      menuEl.innerHTML = `
+        <a href="#" data-action="login">Iniciar sesión</a>
+        <a href="#" data-action="register">Registrarme</a>
+        <a href="#" data-action="registerBiz">Registrar mi negocio</a>
+        <a href="#" data-action="perfil">Mi perfil</a>
+        <a href="#" data-action="logout" style="color:#b00020;">Cerrar sesión</a>
+      `;
+    }
+
+    // Handlers
+    menuEl.querySelectorAll('[data-action]').forEach(a => {
+      a.addEventListener('click', async (ev) => {
+        ev.preventDefault();
+        const action = a.getAttribute('data-action');
+
+        // cerrar menú al seleccionar
+        if (menu) menu.style.display = 'none';
+
+        // login / register: si hay sesión, cerrarla primero
+        if (action === 'login') {
+          if (getUser()) await AuthController.logout();
+          navigate('/login');
+          return;
+        }
+
+        if (action === 'register') {
+          if (getUser()) await AuthController.logout();
+          navigate('/registro');
+          return;
+        }
+
+        if (action === 'registerBiz') {
+          // Solo barbero puede registrar negocio
+          if (!getUser()) { navigate('/login'); return; }
+          if (getRole() !== 'barbero') { navigate('/'); return; }
+          navigate('/barbero/registrar-negocio');
+          return;
+        }
+
+        if (action === 'perfil') {
+          navigate('/perfil');
+          return;
+        }
+
+        if (action === 'logout') {
+          await AuthController.logout();
+          navigate('/');
+          return;
+        }
+      });
     });
-  });
+  })();
+
 
   // Modal login (obligatorio para Programar / Comentario / Cancelar)
   const modal = document.getElementById('modalAuth');

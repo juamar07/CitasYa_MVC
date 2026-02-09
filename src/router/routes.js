@@ -1,9 +1,8 @@
 import { guardAuth, guardRole } from '../store/auth.js';
 
 export default [
-  // ✅ Home real con menú (NO agendar_publico)
-  { path: '/', component: () => import('../views/home/home.js') },
-
+  
+  { path: '/', component: () => import('../views/cliente/agendar_publico.js') },
   { path: '/login', component: () => import('../views/auth/login.js') },
   { path: '/registro', component: () => import('../views/auth/register_cliente.js') },
 
