@@ -1,6 +1,8 @@
+// src/main.js
 import { initAuth, getUser, getRole } from './store/auth.js';
 import { AuthController } from './controllers/AuthController.js';
 import { navigate } from './router/index.js';
+import { startRouter } from './router/index.js';
 
 async function renderGlobalMenu(){
   await initAuth();
@@ -88,13 +90,20 @@ function bindGlobalMenu(){
       return;
     }
   });
+
+  // cuando navegas, actualiza menú (y también cierra el dropdown)
+  window.addEventListener('hashchange', () => {
+    closeMenu();
+    renderGlobalMenu();
+  });
 }
 
-// ✅ Llamar una vez al iniciar la app
-bindGlobalMenu();
-renderGlobalMenu();
+// ✅ IMPORTANTE: esperar a que exista el DOM del layout
+window.addEventListener('DOMContentLoaded', async () => {
+  // 1) engancha menú global (header existe en main.html)
+  bindGlobalMenu();
+  await renderGlobalMenu();
 
-// ✅ y volver a renderizar el menú cuando cambias de ruta
-window.addEventListener('hashchange', () => {
-  renderGlobalMenu();
+  // 2) arranca el router => renderiza la primera vista (esto evita la pantalla en blanco)
+  startRouter();
 });
