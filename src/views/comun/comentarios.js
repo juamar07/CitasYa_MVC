@@ -1,60 +1,202 @@
+// src/views/comun/comentarios.js
 import { ComentariosController } from '../../controllers/ComentariosController.js';
 import { bindForm } from '../../utils/forms.js';
 
-export default async function ComentariosView({ query }){
-  const negocioId = query.get('negocio') || '';
-  const comentarios = negocioId ? await ComentariosController.list(negocioId) : [];
-  const tipos = await ComentariosController.tipos();
-  const options = tipos.map(t => `<option value="${t.id}">${t.nombre}</option>`).join('');
-  const list = (comentarios||[]).map(c => `
-    <article class="comment-card">
-      <header>
-        <strong>${c.usuario_id ?? 'Usuario'}</strong>
-        <span>${new Date(c.creado_en ?? Date.now()).toLocaleString('es-CO')}</span>
-      </header>
-      <p>${c.comentario ?? ''}</p>
-    </article>`).join('') || '<p>No hay comentarios registrados.</p>';
-  return `
-  <style>
-    body{ font-family:'Open Sans',sans-serif; background:#f4f6fb; margin:0; padding:20px; }
-    .layout{ max-width:960px; margin:0 auto; display:grid; gap:20px; }
-    form, section{ background:#fff; padding:24px; border-radius:12px; box-shadow:0 12px 28px rgba(15,23,42,.08); }
-    h1{ margin:0; }
-    label{ display:block; margin:12px 0 6px; color:#003366; font-weight:600; }
-    input, select, textarea{ width:100%; padding:12px; border:2px solid #d7dbe3; border-radius:8px; font-size:16px; box-sizing:border-box; }
-    textarea{ min-height:120px; }
-    button{ margin-top:16px; padding:12px 18px; border:none; border-radius:8px; background:#5c6bc0; color:#fff; font-weight:700; cursor:pointer; }
-    .comment-card{ border-bottom:1px solid #e2e8f0; padding-bottom:16px; margin-bottom:16px; }
-    .comment-card:last-child{ border-bottom:none; margin-bottom:0; }
-    .comment-card header{ display:flex; justify-content:space-between; margin-bottom:8px; color:#475569; font-size:14px; }
-  </style>
-  <div class="layout">
-    <form id="comentarioForm">
-      <h1>Deja tu comentario</h1>
-      <label for="comentario_negocio">Negocio</label>
-      <input id="comentario_negocio" name="negocio_id" value="${negocioId}" placeholder="ID del negocio" required />
-      <label for="comentario_tipo">Tipo</label>
-      <select id="comentario_tipo" name="tipo_id" required>
-        <option value="">Selecciona una opción</option>
-        ${options}
-      </select>
-      <label for="comentario_texto">Comentario</label>
-      <textarea id="comentario_texto" name="comentario" required></textarea>
-      <button type="submit">Enviar comentario</button>
-    </form>
-    <section>
-      <h2>Comentarios recientes</h2>
-      ${list}
-    </section>
-  </div>`;
+function escapeHtml(str=''){
+  return String(str)
+    .replaceAll('&','&amp;')
+    .replaceAll('<','&lt;')
+    .replaceAll('>','&gt;')
+    .replaceAll('"','&quot;')
+    .replaceAll("'","&#039;");
 }
 
-export function onMount(){
-  const form = document.getElementById('comentarioForm');
-  if (form){
-    bindForm(form, async (payload) => {
-      await ComentariosController.crear(payload);
-      location.reload();
+function parseHashQuery(){
+  // soporta #/comentarios?negocio=12
+  const hash = location.hash || '';
+  const qIndex = hash.indexOf('?');
+  if (qIndex === -1) return {};
+  const query = hash.slice(qIndex + 1);
+  return Object.fromEntries(new URLSearchParams(query));
+}
+
+function starsHTML(name='calificacion'){
+  // radios 1..5 para que bindForm capture calificacion
+  // (la estética final depende del CSS existente; no lo tocamos)
+  return `
+    <div class="stars" data-stars>
+      ${[1,2,3,4,5].map(n => `
+        <label style="cursor:pointer; user-select:none;">
+          <input type="radio" name="${name}" value="${n}" required style="display:none;">
+          <span data-star="${n}">★</span>
+        </label>
+      `).join('')}
+      <div class="rating-label" data-rating-label>Neutro</div>
+    </div>
+  `;
+}
+
+function wireStars(container){
+  const stars = [...container.querySelectorAll('[data-star]')];
+  const label = container.querySelector('[data-rating-label]');
+  const radios = [...container.querySelectorAll('input[type="radio"]')];
+
+  function updateUI(value){
+    stars.forEach((s) => {
+      const n = parseInt(s.getAttribute('data-star'), 10);
+      s.style.opacity = (n <= value) ? '1' : '0.3';
     });
+    if (label){
+      if (value >= 4) label.textContent = 'Positivo';
+      else if (value === 3) label.textContent = 'Neutro';
+      else label.textContent = 'Negativo';
+    }
   }
+
+  radios.forEach(r => {
+    r.addEventListener('change', () => updateUI(parseInt(r.value, 10)));
+  });
+
+  // default visual
+  updateUI(3);
+}
+
+function renderTipoOptions(tipos){
+  return `
+    <option value="">Selecciona una opción</option>
+    ${tipos.map(t => `<option value="${t.id}">${escapeHtml(t.nombre)}</option>`).join('')}
+  `;
+}
+
+function renderMisComentarios(list){
+  if (!list.length){
+    return `<p>No hay comentarios registrados.</p>`;
+  }
+
+  return `
+    <div class="mis-comentarios-list">
+      ${list.map(c => `
+        <div class="comentario-item" style="padding:12px; border:1px solid #eee; border-radius:10px; margin-bottom:10px;">
+          <div style="display:flex; justify-content:space-between; gap:10px; align-items:flex-start;">
+            <div>
+              <div style="font-weight:600;">
+                ${escapeHtml(c.nombre_autor || 'Anónimo')}
+                <span style="opacity:.7; font-weight:400;">• ${escapeHtml(c.creado_en || '')}</span>
+              </div>
+              <div style="opacity:.8; font-size:14px;">
+                Calificación: ${escapeHtml(c.calificacion)} | Recomienda: ${c.recomienda ? 'Sí' : 'No'}
+              </div>
+            </div>
+            <button type="button" class="btn-eliminar" data-eliminar-id="${c.id}">
+              Eliminar
+            </button>
+          </div>
+          <div style="margin-top:8px; white-space:pre-wrap;">${escapeHtml(c.texto || '')}</div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+export default async function ComentariosView(){
+  const { negocio } = parseHashQuery(); // opcional: negocio_id desde query
+  const tipos = await ComentariosController.tipos();
+  const misComentarios = await ComentariosController.listMine();
+
+  return `
+    <div class="page">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <button type="button" class="btn-volver" onclick="history.back()">← Volver</button>
+        <h2 style="margin:0;">Comentarios</h2>
+        <div style="width:42px;"></div>
+      </div>
+
+      <div class="card" style="padding:18px; border-radius:14px;">
+        <h1 style="text-align:center; margin-top:0;">Cuéntanos tu experiencia</h1>
+
+        <form id="formComentario">
+          <div class="form-group">
+            <label>Tu nombre <span style="opacity:.6;">(opcional)</span></label>
+            <input name="nombre_autor" type="text" placeholder="Ej: Juan Pérez" />
+          </div>
+
+          <div class="form-group">
+            <label>Selecciona a quién va dirigido</label>
+            <select name="tipo_comentario_id" required>
+              ${renderTipoOptions(tipos)}
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>Negocio</label>
+            <input
+              name="negocio_id"
+              type="number"
+              inputmode="numeric"
+              placeholder="ID del negocio"
+              value="${negocio ? escapeHtml(negocio) : ''}"
+              required
+            />
+            <small style="opacity:.7;">Se sugiere con base en barberías registradas.</small>
+          </div>
+
+          <div class="form-group">
+            <label>Escribe tu comentario</label>
+            <textarea name="texto" rows="4" placeholder="¿Qué te gustó o qué podemos mejorar?" required></textarea>
+          </div>
+
+          <div class="form-group" style="display:flex; justify-content:space-between; gap:20px; flex-wrap:wrap;">
+            <div>
+              <label>Déjanos tu calificación</label>
+              <div id="starsWrap">
+                ${starsHTML('calificacion')}
+              </div>
+            </div>
+
+            <div style="display:flex; align-items:flex-end;">
+              <label style="display:flex; gap:8px; align-items:center; margin:0;">
+                <input type="checkbox" name="recomienda" />
+                ¿Recomiendas la página? <span style="opacity:.7;">Sí, la recomiendo</span>
+              </label>
+            </div>
+          </div>
+
+          <button type="submit" class="btn-enviar" style="width:100%; margin-top:12px;">
+            Enviar
+          </button>
+        </form>
+      </div>
+
+      <div class="card" style="padding:18px; border-radius:14px; margin-top:16px;">
+        <h2 style="margin-top:0;">Tus comentarios</h2>
+        <div id="misComentarios">
+          ${renderMisComentarios(misComentarios)}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+export async function onMount(root){
+  const form = root.querySelector('#formComentario');
+  const starsWrap = root.querySelector('#starsWrap');
+  if (starsWrap) wireStars(starsWrap);
+
+  bindForm(form, async (data) => {
+    await ComentariosController.crear(data);
+    // recarga la vista
+    location.hash = location.hash.split('?')[0] + (location.hash.includes('?') ? location.hash.slice(location.hash.indexOf('?')) : '');
+  });
+
+  root.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-eliminar-id]');
+    if (!btn) return;
+
+    const id = parseInt(btn.getAttribute('data-eliminar-id'), 10);
+    if (!Number.isFinite(id)) return;
+
+    await ComentariosController.eliminar(id);
+    // refresca
+    location.hash = location.hash;
+  });
 }
