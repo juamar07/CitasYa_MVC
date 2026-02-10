@@ -298,9 +298,9 @@ export default async function ComentariosView(){
           <div class="banner-inner">
             <a href="#" class="back-button" onclick="history.back();return false;">&larr; Volver</a>
             <div class="banner-title">Comentarios</div>
-            <a href="/" class="banner-logo" aria-label="Inicio">
-              <img src="LogoCitasYa.png" alt="Citas Ya" />
-            </a>
+              <a class="banner-logo" href="#/">
+                <img src="assets/img/LogoCitasYa.png" alt="Citas Ya">
+              </a>
           </div>
         </div>
       </header>
