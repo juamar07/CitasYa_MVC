@@ -19,9 +19,9 @@ function toBool(v){
 
 function sentimientoFromCalificacion(cal){
   if (cal == null) return null;
-  if (cal >= 4) return 'positivo';
-  if (cal === 3) return 'neutro';
-  return 'negativo';
+  if (cal >= 4) return 'Positivo';
+  if (cal === 3) return 'Neutro';
+  return 'Negativo';
 }
 
 export const ComentariosController = {

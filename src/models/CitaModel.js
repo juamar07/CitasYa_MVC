@@ -1,3 +1,4 @@
+// src/models/CitaModel.js
 import { supabase } from '../config/supabaseClient.js';
 
 export const CitaModel = {
@@ -7,6 +8,20 @@ export const CitaModel = {
       .eq('usuario_cliente_id', usuarioId)
       .order('inicia_en', { ascending:false });
   },
+
+  // ✅ NUEVO: versión detallada para UI cancelar/reagendar
+  byClienteDetailed(usuarioId){
+    return supabase.from('citas')
+      .select(`
+        id, negocio_id, personal_id, servicio_id, fecha, inicia_en, termina_en, estado_id,
+        negocios:negocio_id ( id, nombre ),
+        servicios:servicio_id ( id, nombre, duracion_min ),
+        personal:personal_id ( id, nombre_publico )
+      `)
+      .eq('usuario_cliente_id', usuarioId)
+      .order('inicia_en', { ascending:false });
+  },
+
   byStaff(personalId){
     return supabase.from('citas')
       .select('id, usuario_cliente_id, servicio_id, fecha, inicia_en, termina_en, estado_id')
