@@ -354,7 +354,7 @@ export default async function ClienteCancelarView(){
     </div>
 
     <div class="legal-outside">
-      Todos los derechos reservados © 2025<br>
+      Todos los derechos reservados © 2026<br>
       Citas Ya S.A.S - Nit 810.000.000-0
     </div>
   </div>
