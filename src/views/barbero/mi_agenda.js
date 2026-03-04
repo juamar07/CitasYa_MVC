@@ -5,7 +5,6 @@ import { getUsuarioId } from '../../store/auth.js';
 import { formatDate, formatTime } from '../../utils/dates.js';
 import { ConjuntoHorarioModel } from '../../models/ConjuntoHorarioModel.js';
 import { DiaHorarioModel } from '../../models/DiaHorarioModel.js';
-
 function pick(obj, keys, fallback = '—') {
   for (const k of keys) {
     if (obj && obj[k] !== undefined && obj[k] !== null && obj[k] !== '') return obj[k];
