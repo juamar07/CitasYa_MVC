@@ -14,7 +14,7 @@ export default [
   { path: '/barbero/organizar-agenda', guard: () => guardRole('barbero'), component: () => import('../views/barbero/organizar_agenda.js') },
   { path: '/barbero/registrar-negocio', guard: () => guardRole('barbero'), component: () => import('../views/barbero/registrar_negocio.js') },
 
-  { path: '/admin', guard: () => guardRole('administrador'), component: () => import('../views/admin/dashboard.js') },
+  { path: '/admin', guard: () => guardRole(3), component: () => import('../views/admin/dashboard.js') },
 
   // ✅ NUEVO: vista simbólica "Mi perfil"
   { path: '/perfil', guard: () => guardAuth(), component: () => import('../views/comun/perfil.js') },

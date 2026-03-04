@@ -1,10 +1,15 @@
 import { EstadisticaModel } from '../models/EstadisticaModel.js';
 
 export const StatsService = {
-  global(){
-    return EstadisticaModel.resumenGlobal();
+  async global(){
+    const { data, error } = await EstadisticaModel.resumenGlobal();
+    if (error) throw error;
+    return data || {};
   },
-  forBusiness(negocioId){
-    return EstadisticaModel.resumenNegocio(negocioId);
+
+  async forBusiness(negocioId){
+    const { data, error } = await EstadisticaModel.resumenNegocio(negocioId);
+    if (error) throw error;
+    return data || {};
   }
 };

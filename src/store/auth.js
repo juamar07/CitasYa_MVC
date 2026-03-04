@@ -14,7 +14,18 @@ async function fetchProfile(authUserId){
     .single();
 
   if (error) return null;
-  return { usuarioId: data.id, role: data.roles?.nombre };
+
+  const roleById = {
+    1: 'usuario',        // cliente
+    2: 'barbero',
+    3: 'administrador'
+  };
+
+  return {
+    usuarioId: data.id,
+    rolId: data.rol_id,
+    role: roleById[data.rol_id] || data.roles?.nombre || null
+  };
 }
 
 // Inicializa listener 1 sola vez
@@ -58,6 +69,7 @@ async function ensureSessionLoaded(){
 export function getUser(){ return session?.user || null; }
 export function getRole(){ return profile?.role || null; }
 export function getUsuarioId(){ return profile?.usuarioId || null; }
+export function getRolId(){ return profile?.rolId || null; }
 
 export async function guardAuth(){
   await ensureSessionLoaded();
@@ -80,10 +92,16 @@ export async function guardRole(expected){
   // perfil ya se asegura en ensureSessionLoaded, pero lo dejamos por seguridad
   await ensureSessionLoaded();
 
-  if (getRole() !== expected) {
-    // está logueado, pero sin permiso
-    location.hash = '#/';
-    return false;
-  }
-  return true;
+      if (typeof expected === 'number') {
+        if (getRolId() !== expected) {
+          location.hash = '#/';
+          return false;
+        }
+      } else {
+        if (getRole() !== expected) {
+          location.hash = '#/';
+          return false;
+        }
+      }
+      return true;
 }

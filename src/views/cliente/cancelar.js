@@ -86,7 +86,7 @@ async function getHorarioDia(personalId, dateStr){
   // buscamos el registro del día con varios nombres posibles
   const dia = dias.find(d => {
     const v = Number(pick(d, ['dia_id','dia_semana','dia','dia_idx'], -999));
-    return v === idx;
+    return v === idx || v === (idx + 1);
   });
 
   return dia || null;

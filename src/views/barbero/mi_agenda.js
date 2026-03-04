@@ -35,7 +35,7 @@ export default async function BarberoMiAgendaView(){
   const citas = await BarberoAgendaController.miAgenda();
 
   // 4) pintar citas (con fallback)
-  const rows = (citas||[]).map(c => `
+const rows = (citas||[]).map(c => `
     <tr>
       <td>${c.asistente ?? '-'}</td>
       <td>${formatDate(c.fecha ?? (c.inicia_en?.substring?.(0,10) || ''))}</td>
@@ -60,8 +60,9 @@ export default async function BarberoMiAgendaView(){
         const dayNames = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
 
         const body = dias.map(d => {
-          const idx = Number(pick(d, ['dia_semana','dia','dia_idx'], -1));
-          const day = dayNames[idx] || `Día ${idx}`;
+          const rawIdx = Number(pick(d, ['dia_id','dia_semana','dia','dia_idx'], -1));
+          const idx = rawIdx >= 1 && rawIdx <= 7 ? rawIdx - 1 : rawIdx;
+          const day = dayNames[idx] || `Día ${rawIdx}`;
 
           const work = !!pick(d, ['trabaja','work','activo'], false);
           const start = pick(d, ['hora_inicio','inicio','start'], '—');

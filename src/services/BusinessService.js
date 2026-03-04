@@ -12,28 +12,57 @@ export const BusinessService = {
     return NegocioModel.mine();
   },
 
-  async detailWithResources(id){
+  async verifyBusinessKey(negocioId, plainKey){
+    if (!negocioId) return { ok: false, message: 'Negocio inválido.' };
+    if (!String(plainKey || '').trim()) return { ok: false, message: 'Debes ingresar la contraseña.' };
+
+    const { data, error, field } = await NegocioModel.readSecretByBusinessId(negocioId);
+    if (error) {
+      console.error('Error verificando clave de negocio:', error);
+      return { ok: false, message: 'No se pudo verificar la clave del negocio.' };
+    }
+
+    if (!field) {
+      return { ok: false, message: 'El negocio no tiene un campo de clave configurado en BD.' };
+    }
+
+    const stored = String(data?.secret || '');
+    const provided = String(plainKey || '');
+    const ok = stored.length > 0 && stored === provided;
+
+    return { ok, message: ok ? 'Verificación exitosa.' : 'Contraseña incorrecta.' };
+  },
+
+  async detailWithResources(id, options = {}){
+    if (options.requireVerification && !options.verified) {
+      return {
+        negocio: null,
+        personal: [],
+        servicios: [],
+        error: new Error('Se requiere verificación de clave antes de cargar recursos.')
+      };
+    }
+
     const [negocio, personal, servicios] = await Promise.all([
       NegocioModel.byId(id),
       PersonalModel.listByNegocio(id),
       ServicioModel.listByNegocio(id)
     ]);
-    return { negocio: negocio.data, personal: personal.data, servicios: servicios.data };
+
+    const error = negocio.error || personal.error || servicios.error || null;
+    return {
+      negocio: negocio.data,
+      personal: personal.data,
+      servicios: servicios.data,
+      error
+    };
   },
 
-  /**
-   * Registro completo (negocio + servicios + personal + relación personal_servicio)
-   * payload: { negocio, responsable?, servicios, personal }
-   * - negocio: { id?, nombre, direccion, activo? }
-   * - servicios: [{ nombre, duracion_min, precio_cop, tokens }]
-   * - personal:  [{ nombre_publico, servicios: [serviceIndex...] }]
-   */
   async registerBusinessFlow(payload){
     const negocioPayload = payload?.negocio ?? {};
     const serviciosPayload = Array.isArray(payload?.servicios) ? payload.servicios : [];
     const personalPayload  = Array.isArray(payload?.personal) ? payload.personal : [];
 
-    // 1) Upsert negocio
     const { data: negocioData, error: negocioErr } = await NegocioModel.upsert(negocioPayload);
     if (negocioErr) throw negocioErr;
 
@@ -41,7 +70,6 @@ export const BusinessService = {
     const negocioId = negocioRow?.id ?? negocioPayload?.id;
     if (!negocioId) throw new Error('No se pudo resolver negocio_id.');
 
-    // 2) Limpiar recursos previos (si existen) para evitar duplicados al actualizar
     const { data: oldServicios } = await supabase
       .from('servicios')
       .select('id')
@@ -52,8 +80,8 @@ export const BusinessService = {
       .select('id')
       .eq('negocio_id', negocioId);
 
-    const oldPersonalIds = (oldPersonal || []).map(p => p.id).filter(Boolean);
-    const oldServiciosIds = (oldServicios || []).map(s => s.id).filter(Boolean);
+    const oldPersonalIds = (oldPersonal || []).map((p) => p.id).filter(Boolean);
+    const oldServiciosIds = (oldServicios || []).map((s) => s.id).filter(Boolean);
 
     if (oldPersonalIds.length){
       await supabase.from('personal_servicio').delete().in('personal_id', oldPersonalIds);
@@ -63,10 +91,9 @@ export const BusinessService = {
       await supabase.from('servicios').delete().eq('negocio_id', negocioId);
     }
 
-    // 3) Insertar servicios
     const serviciosInsert = serviciosPayload
-      .filter(s => (s?.nombre ?? '').trim())
-      .map(s => ({
+      .filter((s) => (s?.nombre ?? '').trim())
+      .map((s) => ({
         negocio_id: negocioId,
         nombre: (s.nombre ?? '').trim(),
         duracion_min: Number(s.duracion_min ?? 0),
@@ -81,7 +108,6 @@ export const BusinessService = {
 
     if (serviciosErr) throw serviciosErr;
 
-    // 4) Insertar personal (incluye propietario autenticado si payload.responsable existe)
     const personalInsert = [];
 
     const responsable = payload?.responsable;
@@ -108,7 +134,7 @@ export const BusinessService = {
           nombre_publico: responsable.nombre_completo,
           activo: true
         });
-      }catch(e){
+      }catch(_e){
         personalInsert.push({
           negocio_id: negocioId,
           usuario_id: null,
@@ -119,7 +145,7 @@ export const BusinessService = {
       }
     }
 
-    personalPayload.forEach(p => {
+    personalPayload.forEach((p) => {
       if (!(p?.nombre_publico ?? '').trim()) return;
       personalInsert.push({
         negocio_id: negocioId,
@@ -137,8 +163,7 @@ export const BusinessService = {
 
     if (personalErr) throw personalErr;
 
-    // 5) Insertar relaciones personal_servicio
-    const serviceIdByIndex = (serviciosRows || []).map(r => r.id);
+    const serviceIdByIndex = (serviciosRows || []).map((r) => r.id);
 
     const firstIsOwner = Boolean(responsable?.nombre_completo);
     const relations = [];
@@ -147,7 +172,7 @@ export const BusinessService = {
       const personalRow = personalRows?.[firstIsOwner ? idx + 1 : idx];
       if (!personalRow?.id) return;
 
-      (p.servicios || []).forEach(serviceIndex => {
+      (p.servicios || []).forEach((serviceIndex) => {
         const servicioId = serviceIdByIndex?.[serviceIndex];
         if (!servicioId) return;
         relations.push({ personal_id: personalRow.id, servicio_id: servicioId });

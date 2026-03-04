@@ -209,12 +209,16 @@ export default async function RegistrarNegocioView(){
 }
 
 .mvc-registro-negocio pre {
-  background: #0b1220;
-  color: #c7d2fe;
+  background: #ffffff;
+  color: #111827;
   padding: 14px;
   border-radius: 12px;
   overflow: auto;
-  border: 1px solid rgba(255,255,255,0.08);
+  border: 1px solid var(--border);
+  box-shadow: 0 6px 14px rgba(17,24,39,0.06);
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
     </style>
 
@@ -605,6 +609,7 @@ export async function onMount(){
     if (!ownerName?.value?.trim()) { err.ownerName && (err.ownerName.textContent = 'Ingresa tu nombre.'); ok = false; }
     if (!ownerEmail?.value?.trim()) { err.ownerEmail && (err.ownerEmail.textContent = 'Ingresa tu correo.'); ok = false; }
     if (!ownerPhone?.value?.trim()) { err.ownerPhone && (err.ownerPhone.textContent = 'Ingresa tu teléfono.'); ok = false; }
+    if (!ownerPass?.value?.trim() || ownerPass.value.trim().length < 6) { err.ownerPass && (err.ownerPass.textContent = 'Ingresa una contraseña de mínimo 6 caracteres.'); ok = false; }
 
     const validServices = services.filter(s => (s.name||'').trim() && Number(s.durationMins) > 0);
     if (!validServices.length) { err.services && (err.services.textContent = 'Agrega al menos un servicio válido.'); ok = false; }
@@ -652,7 +657,8 @@ export async function onMount(){
         id: currentNegocioId,
         nombre: shopName.value.trim(),
         direccion: shopAddress.value.trim(),
-        activo: false
+        activo: false,
+        __businessKey: ownerPass.value.trim()
       },
       servicios: services.map(s => ({
         nombre: (s.name||'').trim(),

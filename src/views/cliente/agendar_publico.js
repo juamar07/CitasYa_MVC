@@ -42,6 +42,19 @@ export default async function ClienteAgendarPublicoView({ query }) {
       border-radius:10px;
       border-left:var(--container-bl) solid var(--c-primary);
     }
+
+    /* Banner Home */
+    .home-banner{
+      margin-bottom: 25px;
+    }
+    .home-banner img{
+      width: 100%;
+      height: auto;
+      border-radius: 6px;
+      display: block;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.10);
+    }
+
     h1{ text-align:center; font-size:30px; margin:.3rem 0 1.2rem; }
     label{ display:block; margin:10px 0 6px; color:var(--c-text); }
     input[type="text"], input[type="date"], select, textarea{
@@ -131,6 +144,9 @@ export default async function ClienteAgendarPublicoView({ query }) {
   </header>
 
   <div class="container">
+      <div class="home-banner">
+        <img src="assets/img/BannerCitasYa.png" alt="Banner Barbería Citas Ya">
+      </div>
     <h1>Programación de Citas</h1>
 
     <label>Ingrese nombre completo del asistente</label>

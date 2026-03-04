@@ -1,10 +1,11 @@
+// src/models/UsuarioModel.js
 import { supabase } from '../config/supabaseClient.js';
 
 export const UsuarioModel = {
   currentProfile(authUserId){
     return supabase
       .from('usuarios')
-      .select('id, nombres, apellidos, correo, telefono, rol_id, roles:rol_id(nombre)')
+      .select('id, nombre_completo, usuario, correo, telefono, rol_id, roles:rol_id(nombre)')
       .eq('auth_user_id', authUserId)
       .single();
   },

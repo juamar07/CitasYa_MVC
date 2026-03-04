@@ -1,6 +1,6 @@
-// src/views/comun/perfil.js
 import { supabase } from '../../config/supabaseClient.js';
 import { UsuarioModel } from '../../models/UsuarioModel.js';
+import { SolicitudAprobacionModel } from '../../models/SolicitudAprobacionModel.js';
 import { navigate } from '../../router/index.js';
 
 function esc(s=''){
@@ -12,16 +12,16 @@ function esc(s=''){
     .replaceAll("'","&#039;");
 }
 
-function roleLabelFromId(rolId){
-  if (rolId === 3) return 'administrador';
-  if (rolId === 2) return 'barbero';
-  return 'usuario';
+function roleLabel(rolId){
+  if (rolId === 3) return 'Administrador';
+  if (rolId === 2) return 'Barbero';
+  return 'Cliente';
 }
 
-function primaryRouteByRole(rolId){
-  if (rolId === 3) return { path: '/admin', label: 'Ir al panel admin' };
-  if (rolId === 2) return { path: '/barbero/mi-agenda', label: 'Ir a mi agenda' };
-  return { path: '/cliente/agendar', label: 'Ir a agendar cita' };
+function primaryByRole(rolId){
+  if (rolId === 3) return { path: '/admin', label: 'Ir a panel de administración' };
+  if (rolId === 2) return { path: '/barbero/organizar-agenda', label: 'Ir a organizar mi agenda' };
+  return { path: '/cliente/agendar-publico', label: 'Ir a agendar cita' };
 }
 
 export default async function PerfilView(){
@@ -33,15 +33,13 @@ export default async function PerfilView(){
     return '';
   }
 
-  const { data: perfil, error } = await UsuarioModel.currentProfile(authUser.id); // :contentReference[oaicite:1]{index=1}
-
-  const fullName = perfil
-    ? `${perfil.nombres || ''} ${perfil.apellidos || ''}`.trim()
-    : (authUser.user_metadata?.full_name || authUser.email || '—');
+  const { data: perfil, error } = await UsuarioModel.currentProfile(authUser.id);
 
   const rolId = perfil?.rol_id ?? 1;
-  const rolLabel = roleLabelFromId(rolId);
-  const primary = primaryRouteByRole(rolId);
+  const primary = primaryByRole(rolId);
+
+  const fullName = perfil?.nombre_completo || authUser.user_metadata?.full_name || '—';
+  const username = perfil?.usuario || '—';
 
   return `
   <style>
@@ -55,7 +53,6 @@ export default async function PerfilView(){
       --banner-bg-hover: #d7dbe3;
       --btn-blue: #5c6bc0;
       --btn-blue-hover:#3f51b5;
-      --btn-green:#66BB6A;
     }
     body{
       font-family:'Open Sans', sans-serif; background:#eee; margin:0; padding:20px; color:#333;
@@ -65,7 +62,6 @@ export default async function PerfilView(){
       max-width:var(--container-w); margin:auto; padding:var(--container-pad); background:#fff;
       box-shadow:0 4px 8px rgba(0,0,0,.05); border-radius:10px; border-left:var(--container-bl) solid var(--btn-blue);
     }
-
     h1{ color:#000; font-size:34px; font-weight:700; margin:8px 0 12px; }
     .row{ margin:6px 0; font-size:18px; }
     .row b{ color:#233247; }
@@ -74,7 +70,7 @@ export default async function PerfilView(){
     .btns{ display:flex; gap:12px; flex-wrap:wrap; margin-top:18px; }
     button{
       border:none; border-radius:8px; padding:12px 16px; font-weight:700; cursor:pointer;
-      transition:.2s; color:#fff; min-width:220px;
+      transition:.2s; color:#fff; min-width:240px;
     }
     button:active{ transform:scale(.99); }
     .btn-blue{ background:var(--btn-blue); }
@@ -89,7 +85,7 @@ export default async function PerfilView(){
       background:#fff1f2; border:1px solid #fecdd3; color:#9f1239; display:none;
     }
 
-    /* Header igual al login */
+    /* Header estándar */
     .app-banner{
       position:fixed; top:0; left:0; right:0; height:var(--banner-h); z-index:9999; background:transparent;
     }
@@ -112,7 +108,7 @@ export default async function PerfilView(){
     }
     .back-button:hover{ background:var(--btn-blue); color:#fff; }
 
-    /* Footer fuera del container (como login) */
+    /* Footer fuera */
     .legal-outside{
       margin:18px auto 24px; padding:10px 12px;
       max-width: calc(var(--container-w) + var(--container-pad)*2 + var(--container-bl));
@@ -142,12 +138,15 @@ export default async function PerfilView(){
   <div class="container">
     <h1>Mi perfil</h1>
 
-    ${error ? `<div class="error" style="display:block;">No se pudo cargar tu perfil desde la tabla usuarios.</div>` : ''}
+    ${(!perfil && error) ? `<div class="error" style="display:block;">No se pudo cargar tu perfil desde la tabla usuarios.</div>` : ''}
 
-    <div class="row">Nombre: <b>${esc(fullName || '—')}</b></div>
-    <div class="row">Tipo de cuenta: <b>${esc(rolLabel)}</b></div>
+    <div class="row">Nombre: <b>${esc(fullName)}</b></div>
+    <div class="row">Usuario: <b>${esc(username)}</b></div>
+    <div class="row">Tipo de cuenta: <b>${esc(roleLabel(rolId))}</b></div>
 
     <div class="btns">
+      <button id="btnIr" class="btn-blue" type="button">${esc(primary.label)}</button>
+
       ${
         rolId === 1 ? `
           <button id="btnSolicitarBarbero" class="btn-outline" type="button">
@@ -155,12 +154,13 @@ export default async function PerfilView(){
           </button>
         ` : ''
       }
-      <button id="btnIr" class="btn-blue" type="button">${esc(primary.label)}</button>
     </div>
 
-    <div class="muted">
-      Nota: la solicitud de perfil barbero es simbólica por ahora.
-    </div>
+    ${
+      rolId === 1
+        ? `<div class="muted">Nota: la solicitud de perfil barbero quedará en espera hasta aprobación del administrador.</div>`
+        : ``
+    }
   </div>
 
   <div class="legal-outside">
@@ -171,23 +171,40 @@ export default async function PerfilView(){
 }
 
 export function onMount(){
-  const backBtn = document.querySelector('[data-action="back"]');
-  backBtn?.addEventListener('click', (ev) => { ev.preventDefault(); history.back(); });
+  document.querySelector('[data-action="back"]')?.addEventListener('click', (ev)=>{
+    ev.preventDefault();
+    history.back();
+  });
 
-  const btnIr = document.getElementById('btnIr');
-  btnIr?.addEventListener('click', async ()=>{
-    const { data: sessionData } = await supabase.auth.getSession();
-    const authUser = sessionData?.session?.user;
+  document.getElementById('btnIr')?.addEventListener('click', async ()=>{
+    const { data: s } = await supabase.auth.getSession();
+    const authUser = s?.session?.user;
     if (!authUser) return navigate('/login');
 
     const { data: perfil } = await UsuarioModel.currentProfile(authUser.id);
     const rolId = perfil?.rol_id ?? 1;
-    const primary = primaryRouteByRole(rolId);
+    const primary = primaryByRole(rolId);
     navigate(primary.path);
   });
 
-  const btnSolicitar = document.getElementById('btnSolicitarBarbero');
-  btnSolicitar?.addEventListener('click', ()=>{
-    alert('Solicitud enviada (simbólico). Luego conectamos esto al flujo de aprobación.');
+  document.getElementById('btnSolicitarBarbero')?.addEventListener('click', async ()=>{
+    const { data: s } = await supabase.auth.getSession();
+    const authUser = s?.session?.user;
+    if (!authUser) return navigate('/login');
+
+    const { data: perfil } = await UsuarioModel.currentProfile(authUser.id);
+    const usuarioId = perfil?.id;
+    if (!usuarioId) return alert('No se encontró tu perfil en tabla usuarios.');
+
+    // Evitar duplicar solicitud pendiente
+    const { data: existing } = await SolicitudAprobacionModel.findPendingBarberoByUsuario(usuarioId);
+    if (existing?.id) return alert('Ya tienes una solicitud pendiente. Espera la aprobación del administrador.');
+
+    const { error } = await SolicitudAprobacionModel.createBarbero(usuarioId);
+    if (error){
+      console.error(error);
+      return alert('No se pudo enviar la solicitud. Revisa consola.');
+    }
+    alert('Solicitud enviada. Quedará en espera de aprobación.');
   });
 }

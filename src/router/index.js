@@ -24,14 +24,19 @@ async function handle(){
     const html = await view({ query });
     render(html);
     if (typeof mod.onMount === 'function') mod.onMount({ query });
-  } catch (err) {
-    render(`<pre style="padding:16px;background:#111;color:#eee;white-space:pre-wrap">
-🚨 Router error:
-${String(err?.stack || err)}
-</pre>`);
-    console.error('Router error:', err);
+    } catch (err) {
+      const msg =
+        err?.stack ||
+        err?.message ||
+        (typeof err === 'string' ? err : JSON.stringify(err, null, 2));
+
+      render(`<pre style="padding:16px;background:#111;color:#eee;white-space:pre-wrap">
+    🚨 Router error:
+    ${msg}
+    </pre>`);
+      console.error('Router error:', err);
+    }
   }
-}
 
 export function startRouter(){
   window.addEventListener('hashchange', handle);

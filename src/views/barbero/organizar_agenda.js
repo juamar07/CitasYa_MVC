@@ -1,4 +1,8 @@
 import { navigate } from '../../router/index.js';
+import { BusinessService } from '../../services/BusinessService.js';
+import { ConjuntoHorarioModel } from '../../models/ConjuntoHorarioModel.js';
+import { DiaHorarioModel } from '../../models/DiaHorarioModel.js';
+import { getUsuarioId } from '../../store/auth.js';
 
 export default async function BarberoOrganizarAgendaView() {
   return `
@@ -37,7 +41,7 @@ export default async function BarberoOrganizarAgendaView() {
     h3{ margin:12px 0 8px; color:#233247; }
     label{ display:block; margin:8px 0 4px; color:#003366; }
 
-    select, input[type="text"], input[type="date"], textarea{
+    select, input[type="text"], input[type="date"], input[type="password"], textarea{
       width:100%; padding:10px; border:2px solid #ddd; border-radius:6px; font-size:16px;
       transition: border-color .2s; box-sizing: border-box;
     }
@@ -66,7 +70,7 @@ export default async function BarberoOrganizarAgendaView() {
     .btn-blue{ background:#5c6bc0; } .btn-blue:hover{ background:#3f51b5; }
     .btn-red{ background:#ef5350; } .btn-red:hover{ background:#e53935; }
     .btn-slim{ width:min(640px, 75%); margin:12px auto; }
-    .btn-icon{ display:inline-block; padding:6px 10px; border-radius:6px; font-size:14px; width:auto; }
+    .btn-icon{ display:inline-block; padding:6px 10px; border-radius:6px; font-size:14px; width:auto; border:none; cursor:pointer; }
     .btn-icon-green{ background:#66bb6a; color:#fff; }
     .btn-icon-green:hover{ background:#43a047; }
 
@@ -111,7 +115,6 @@ export default async function BarberoOrganizarAgendaView() {
     }
   </style>
 
-  <!-- ===== Banner ===== -->
   <header class="app-banner" role="banner">
     <div class="banner-box">
       <div class="banner-inner">
@@ -127,7 +130,6 @@ export default async function BarberoOrganizarAgendaView() {
   <div class="container">
     <h1>Organizar agenda</h1>
 
-    <!-- 1. Barbería -->
     <section>
       <label for="bizName">Nombre de la barbería
         <span id="bizState" class="badge badge-warn">No cargada</span>
@@ -137,7 +139,15 @@ export default async function BarberoOrganizarAgendaView() {
       <small class="muted">Escribe el nombre. La búsqueda ignora mayúsculas/acentos.</small>
     </section>
 
-    <!-- 2. Personal -->
+    <section id="bizPasswordBlock" style="display:none; margin-top:10px;">
+      <label for="bizPassword">Contraseña de la barbería</label>
+      <div class="row">
+        <input type="password" id="bizPassword" placeholder="Ingresa la contraseña">
+        <button type="button" id="btnVerifyBiz" class="btn-icon btn-icon-green align-end">Verificar</button>
+      </div>
+      <small id="bizPasswordStatus" class="muted"></small>
+    </section>
+
     <section>
       <label for="staffSelect">Seleccione el personal</label>
       <select id="staffSelect" disabled>
@@ -149,7 +159,6 @@ export default async function BarberoOrganizarAgendaView() {
       <button type="button" id="btnMiAgenda" class="btn btn-blue" style="width:100%;">Mi agenda</button>
     </section>
 
-    <!-- 3. Mismo horario para toda la semana -->
     <section>
       <h2>Horario de trabajo</h2>
       <div class="row">
@@ -180,7 +189,6 @@ export default async function BarberoOrganizarAgendaView() {
       </div>
     </section>
 
-    <!-- 4-5. Por día -->
     <section>
       <h3>Horario por día</h3>
       <table>
@@ -194,7 +202,6 @@ export default async function BarberoOrganizarAgendaView() {
       <small class="muted">Puedes usar el horario común y luego ajustar un día específico aquí.</small>
     </section>
 
-    <!-- 5.1 Almuerzo -->
     <section>
       <h3>Hora de almuerzo (opcional)</h3>
       <div class="row-3">
@@ -216,7 +223,6 @@ export default async function BarberoOrganizarAgendaView() {
       </div>
     </section>
 
-    <!-- 6. Fechas -->
     <section>
       <h2>Rango de fechas</h2>
       <div class="row-3">
@@ -235,13 +241,11 @@ export default async function BarberoOrganizarAgendaView() {
       <div id="dateWarn" class="warn" style="display:none; margin-top:6px;"></div>
     </section>
 
-    <!-- 7. Actualizar agenda + Resumen -->
     <section>
       <button type="button" id="btnUpdateAgenda" class="btn btn-green btn-slim">Actualizar agenda</button>
       <textarea id="agendaSummary" placeholder="Aquí verás el resumen de tu agenda…" aria-label="Resumen de agenda"></textarea>
     </section>
 
-    <!-- 8. Portal de pagos -->
     <section style="text-align:center; margin-top:10px;">
       <button type="button" id="btnPagos" class="btn btn-red btn-slim">Ir al portal de pagos</button>
       <p class="muted" style="margin:6px 0 0;">Recuerda recargar <strong>tokens</strong> para agendar citas. NIT 810.000.000-0</p>
@@ -258,13 +262,58 @@ export default async function BarberoOrganizarAgendaView() {
 export function onMount() {
   const DAYS = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
 
-  // Navegación
+  const state = {
+    businesses: [],
+    businessByName: new Map(),
+    businessId: null,
+    businessName: '',
+    resourcesLoaded: false,
+    dayIds: [1, 2, 3, 4, 5, 6, 7],
+    personalId: null,
+    personalName: '',
+    fecha_inicio: '',
+    fecha_fin: '',
+    perDay: {},
+    perDayInputs: {}
+  };
+
+  const $ = (id) => document.getElementById(id);
+
+  const bizNameInput = $('bizName');
+  const businessList = $('businessList');
+  const bizState = $('bizState');
+  const bizPasswordBlock = $('bizPasswordBlock');
+  const bizPassword = $('bizPassword');
+  const btnVerifyBiz = $('btnVerifyBiz');
+  const bizPasswordStatus = $('bizPasswordStatus');
+  const staffSelect = $('staffSelect');
+  const sameAllWeek = $('sameAllWeek');
+  const sameWeekBlock = $('sameWeekBlock');
+  const dateStart = $('dateStart');
+  const dateEnd = $('dateEnd');
+  const dateWarn = $('dateWarn');
+  const agendaSummary = $('agendaSummary');
+
   document.getElementById('btnMiAgenda')?.addEventListener('click', () => navigate('/barbero/mi-agenda'));
   document.getElementById('btnPagos')?.addEventListener('click', () => navigate('/pagos'));
   document.getElementById('btnBack')?.addEventListener('click', (e) => { e.preventDefault(); history.back(); });
   document.getElementById('btnHome')?.addEventListener('click', (e) => { e.preventDefault(); navigate('/'); });
 
-  // Helpers UI (igual al MVP)
+  function resetPerDayState() {
+    state.perDay = {};
+    DAYS.forEach((_, dayIdx) => {
+      const dayId = state.dayIds[dayIdx] ?? (dayIdx + 1);
+      state.perDay[dayId] = {
+        dayIdx,
+        trabaja: false,
+        hora_inicio: '',
+        hora_fin: '',
+        almuerzo_inicio: '',
+        almuerzo_fin: ''
+      };
+    });
+  }
+
   function createTimePicker(el){
     const hh = document.createElement('select');
     const mm = document.createElement('select');
@@ -276,6 +325,7 @@ export function onMount() {
       op.textContent = op.value;
       hh.appendChild(op);
     }
+
     const mmPh = document.createElement('option'); mmPh.value=''; mmPh.textContent='MM'; mm.appendChild(mmPh);
     for (let m=0; m<60; m+=10){
       const op = document.createElement('option');
@@ -283,109 +333,441 @@ export function onMount() {
       op.textContent = op.value;
       mm.appendChild(op);
     }
+
+    el.innerHTML = '';
     el.appendChild(hh);
     el.appendChild(document.createTextNode(':'));
     el.appendChild(mm);
 
     return {
-      get: ()=> (hh.value!=='' && mm.value!=='') ? hh.value + ':' + mm.value : '',
-      set: (v)=>{ if(!v){ hh.value=''; mm.value=''; return; } const [H,M]=v.split(':'); hh.value=H||''; mm.value=M||''; }
+      get: ()=> (hh.value!=='' && mm.value!=='') ? `${hh.value}:${mm.value}` : '',
+      set: (v)=>{
+        if (!v) { hh.value = ''; mm.value = ''; return; }
+        const [H, M] = String(v).split(':');
+        hh.value = H || '';
+        mm.value = M || '';
+      }
     };
   }
 
   function renderDayCheckboxes(container){
     container.innerHTML='';
-    DAYS.forEach((d,idx)=>{
-      const lab=document.createElement('label');
-      const cb=document.createElement('input'); cb.type='checkbox'; cb.value=idx;
-      lab.appendChild(cb); lab.appendChild(document.createTextNode(' '+d));
+    DAYS.forEach((d, idx) => {
+      const dayId = state.dayIds[idx] ?? (idx + 1);
+      const lab = document.createElement('label');
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.value = String(dayId);
+      cb.dataset.dayIdx = String(idx);
+      lab.appendChild(cb);
+      lab.appendChild(document.createTextNode(` ${d}`));
       container.appendChild(lab);
     });
   }
 
   function renderPerDayTable(){
-    const perDayBody = document.getElementById('perDayBody');
+    const perDayBody = $('perDayBody');
     if (!perDayBody) return;
 
     perDayBody.innerHTML='';
-    DAYS.forEach((d,idx)=>{
-      const tr=document.createElement('tr');
+    state.perDayInputs = {};
 
-      const tdDay=document.createElement('td'); tdDay.textContent=d; tr.appendChild(tdDay);
+    DAYS.forEach((d, idx) => {
+      const dayId = state.dayIds[idx] ?? (idx + 1);
+      const tr = document.createElement('tr');
 
-      const tdWork=document.createElement('td');
-      const cb=document.createElement('input'); cb.type='checkbox';
+      const tdDay = document.createElement('td'); tdDay.textContent = d; tr.appendChild(tdDay);
+
+      const tdWork = document.createElement('td');
+      const cb = document.createElement('input'); cb.type='checkbox';
       tdWork.appendChild(cb); tr.appendChild(tdWork);
 
-      const tdStart=document.createElement('td');
-      const tpS=document.createElement('div'); tpS.className='time-picker'; tdStart.appendChild(tpS);
-      const tpStart=createTimePicker(tpS);
+      const tdStart = document.createElement('td');
+      const tpS = document.createElement('div'); tpS.className='time-picker';
+      tdStart.appendChild(tpS);
+      const tpStart = createTimePicker(tpS);
 
-      const tdEnd=document.createElement('td');
-      const tpE=document.createElement('div'); tpE.className='time-picker'; tdEnd.appendChild(tpE);
-      const tpEnd=createTimePicker(tpE);
+      const tdEnd = document.createElement('td');
+      const tpE = document.createElement('div'); tpE.className='time-picker';
+      tdEnd.appendChild(tpE);
+      const tpEnd = createTimePicker(tpE);
 
-      tr.appendChild(tdStart); tr.appendChild(tdEnd);
+      tr.appendChild(tdStart);
+      tr.appendChild(tdEnd);
 
-      const tdAct=document.createElement('td');
-      const btn=document.createElement('button');
+      const tdAct = document.createElement('td');
+      const btn = document.createElement('button');
       btn.type='button';
       btn.className='btn-icon btn-icon-green';
       btn.textContent='Guardar';
-      btn.addEventListener('click', ()=> {
-        const s = tpStart.get();
-        const e = tpEnd.get();
-        if (!s || !e) { alert('Selecciona hora de inicio y fin.'); return; }
-        if (s >= e) { alert('La hora de inicio debe ser menor que la hora de fin.'); return; }
+      btn.addEventListener('click', () => {
+        const inicio = tpStart.get();
+        const fin = tpEnd.get();
+        if (!inicio || !fin) { alert('Selecciona hora de inicio y fin.'); return; }
+        if (inicio >= fin) { alert('La hora de inicio debe ser menor que la hora de fin.'); return; }
+
+        state.perDay[dayId] = {
+          ...state.perDay[dayId],
+          dayIdx: idx,
+          trabaja: true,
+          hora_inicio: inicio,
+          hora_fin: fin
+        };
         cb.checked = true;
-        alert('Horario guardado para ' + d + '.');
+        alert(`Horario guardado para ${d}.`);
       });
       tdAct.appendChild(btn);
       tr.appendChild(tdAct);
 
+      cb.addEventListener('change', () => {
+        if (!cb.checked) {
+          state.perDay[dayId] = {
+            ...state.perDay[dayId],
+            dayIdx: idx,
+            trabaja: false,
+            hora_inicio: '',
+            hora_fin: '',
+            almuerzo_inicio: '',
+            almuerzo_fin: ''
+          };
+          tpStart.set('');
+          tpEnd.set('');
+        }
+      });
+
+      state.perDayInputs[dayId] = { cb, tpStart, tpEnd };
       perDayBody.appendChild(tr);
     });
   }
 
-  // Inicializar UI dinámica (como MVP)
-  createTimePicker(document.getElementById('commonStart'));
-  createTimePicker(document.getElementById('commonEnd'));
-  createTimePicker(document.getElementById('lunchStart'));
-  createTimePicker(document.getElementById('lunchEnd'));
-  renderDayCheckboxes(document.getElementById('commonDays'));
-  renderDayCheckboxes(document.getElementById('lunchDays'));
-  renderPerDayTable();
+  function validateLunchForDay(dayData) {
+    if (!dayData.almuerzo_inicio && !dayData.almuerzo_fin) return true;
+    if (!dayData.trabaja || !dayData.hora_inicio || !dayData.hora_fin) return false;
+    if (!dayData.almuerzo_inicio || !dayData.almuerzo_fin) return false;
+    if (dayData.almuerzo_inicio >= dayData.almuerzo_fin) return false;
+    if (dayData.almuerzo_inicio < dayData.hora_inicio) return false;
+    if (dayData.almuerzo_fin > dayData.hora_fin) return false;
+    return true;
+  }
 
-  // Toggle bloque "mismo horario"
-  const sameAllWeek = document.getElementById('sameAllWeek');
-  const sameWeekBlock = document.getElementById('sameWeekBlock');
-  sameAllWeek?.addEventListener('change', () => {
-    if (!sameWeekBlock) return;
-    sameWeekBlock.style.display = sameAllWeek.checked ? 'block' : 'none';
-  });
+  function buildSummaryText() {
+    const lines = [];
+    lines.push(`Barbería: ${state.businessName || '—'}`);
+    lines.push(`Personal: ${state.personalName || '—'}`);
+    lines.push(`Rango: ${state.fecha_inicio || '—'} → ${state.fecha_fin || '—'}`);
+    lines.push('');
+    lines.push('Detalle por día:');
 
-  // Guardar fechas (solo validación UI)
-  const btnSaveDates = document.getElementById('btnSaveDates');
-  btnSaveDates?.addEventListener('click', () => {
-    const start = document.getElementById('dateStart')?.value || '';
-    const end = document.getElementById('dateEnd')?.value || '';
-    const warn = document.getElementById('dateWarn');
-
-    if (warn) warn.style.display = 'none';
-
-    if (start && end && start > end) {
-      if (warn) {
-        warn.textContent = 'La fecha de inicio no puede ser mayor que la fecha de fin.';
-        warn.style.display = 'block';
+    DAYS.forEach((name, idx) => {
+      const dayId = state.dayIds[idx] ?? (idx + 1);
+      const row = state.perDay[dayId];
+      if (!row?.trabaja) {
+        lines.push(`- ${name}: No trabaja`);
+        return;
       }
+      const lunch = row.almuerzo_inicio && row.almuerzo_fin ? ` | Almuerzo ${row.almuerzo_inicio}-${row.almuerzo_fin}` : '';
+      lines.push(`- ${name}: ${row.hora_inicio}-${row.hora_fin}${lunch}`);
+    });
+
+    return lines.join('\n');
+  }
+
+  async function loadBusinesses() {
+    try {
+      const { data, error } = await BusinessService.myBusinesses();
+      if (error) throw error;
+      state.businesses = data || [];
+      state.businessByName = new Map((state.businesses || []).map((b) => [String(b.nombre || ''), b]));
+      if (businessList) {
+        businessList.innerHTML = state.businesses
+          .map((b) => `<option value="${String(b.nombre || '').replace(/"/g, '&quot;')}">`)
+          .join('');
+      }
+    } catch (error) {
+      console.error('Error cargando barberías:', error);
+      alert('No fue posible cargar tus barberías.');
+    }
+  }
+
+  function resetResourcesGate() {
+    state.resourcesLoaded = false;
+    state.personalId = null;
+    state.personalName = '';
+    if (staffSelect) {
+      staffSelect.innerHTML = '<option value="">— Seleccione —</option>';
+      staffSelect.disabled = true;
+    }
+    if (bizState) {
+      bizState.textContent = 'No cargada';
+      bizState.className = 'badge badge-warn';
+    }
+  }
+
+  function handleBusinessSelection() {
+    const selected = state.businessByName.get(bizNameInput?.value || '');
+    if (!selected) {
+      state.businessId = null;
+      state.businessName = '';
+      if (bizPasswordBlock) bizPasswordBlock.style.display = 'none';
+      if (bizPasswordStatus) bizPasswordStatus.textContent = '';
+      if (bizPassword) bizPassword.value = '';
+      resetResourcesGate();
       return;
     }
-    alert('Fechas guardadas.');
+
+    state.businessId = selected.id;
+    state.businessName = selected.nombre || '';
+    if (bizPasswordBlock) bizPasswordBlock.style.display = 'block';
+    if (bizPasswordStatus) bizPasswordStatus.textContent = '';
+    if (bizPassword) bizPassword.value = '';
+    resetResourcesGate();
+  }
+
+  async function verifyAndLoadResources() {
+    if (!state.businessId) {
+      alert('Selecciona primero una barbería válida.');
+      return;
+    }
+
+    const inputPass = bizPassword?.value || '';
+    if (!inputPass.trim()) {
+      alert('Ingresa la contraseña de la barbería.');
+      return;
+    }
+
+    try {
+      if (bizPasswordStatus) bizPasswordStatus.textContent = 'Verificando…';
+      const { ok, message } = await BusinessService.verifyBusinessKey(state.businessId, inputPass);
+      if (!ok) {
+        if (bizPasswordStatus) bizPasswordStatus.textContent = message || 'Clave incorrecta.';
+        alert(message || 'Contraseña incorrecta.');
+        resetResourcesGate();
+        return;
+      }
+
+      const { personal, error } = await BusinessService.detailWithResources(state.businessId, { requireVerification: true, verified: true });
+      if (error) throw error;
+
+      if (staffSelect) {
+        staffSelect.innerHTML = '<option value="">— Seleccione —</option>';
+        (personal || []).forEach((p) => {
+          const op = document.createElement('option');
+          op.value = String(p.id);
+          op.textContent = p.nombre_publico || `Personal #${p.id}`;
+          staffSelect.appendChild(op);
+        });
+        staffSelect.disabled = false;
+      }
+
+      state.resourcesLoaded = true;
+      if (bizState) {
+        bizState.textContent = 'Cargada';
+        bizState.className = 'badge badge-ok';
+      }
+      if (bizPasswordStatus) bizPasswordStatus.textContent = 'Barbería verificada correctamente.';
+    } catch (error) {
+      console.error('Error verificando barbería:', error);
+      if (bizPasswordStatus) bizPasswordStatus.textContent = 'No fue posible verificar la barbería.';
+      alert('No fue posible verificar/cargar recursos de la barbería.');
+    }
+  }
+
+  function bindButtons(tpCommonStart, tpCommonEnd, tpLunchStart, tpLunchEnd) {
+    $('btnApplyCommon')?.addEventListener('click', () => {
+      const inicio = tpCommonStart.get();
+      const fin = tpCommonEnd.get();
+      const selectedDays = Array.from(document.querySelectorAll('#commonDays input[type="checkbox"]:checked'));
+
+      if (!inicio || !fin) { alert('Selecciona la hora de inicio y fin para el horario común.'); return; }
+      if (inicio >= fin) { alert('La hora de inicio debe ser menor a la hora de fin.'); return; }
+      if (!selectedDays.length) { alert('Selecciona al menos un día para aplicar el horario común.'); return; }
+
+      selectedDays.forEach((cb) => {
+        const dayId = Number(cb.value);
+        const dayIdx = Number(cb.dataset.dayIdx);
+        state.perDay[dayId] = {
+          ...state.perDay[dayId],
+          dayIdx,
+          trabaja: true,
+          hora_inicio: inicio,
+          hora_fin: fin
+        };
+
+        const inputs = state.perDayInputs[dayId];
+        if (inputs) {
+          inputs.cb.checked = true;
+          inputs.tpStart.set(inicio);
+          inputs.tpEnd.set(fin);
+        }
+      });
+
+      alert('Horario común guardado.');
+    });
+
+    $('btnApplyLunch')?.addEventListener('click', () => {
+      const almInicio = tpLunchStart.get();
+      const almFin = tpLunchEnd.get();
+      const selectedDays = Array.from(document.querySelectorAll('#lunchDays input[type="checkbox"]:checked'));
+
+      if (!almInicio || !almFin) { alert('Selecciona inicio y fin del almuerzo.'); return; }
+      if (almInicio >= almFin) { alert('La hora de inicio del almuerzo debe ser menor a la hora de fin.'); return; }
+      if (!selectedDays.length) { alert('Selecciona al menos un día para aplicar el almuerzo.'); return; }
+
+      for (const cb of selectedDays) {
+        const dayId = Number(cb.value);
+        const dayData = { ...state.perDay[dayId], almuerzo_inicio: almInicio, almuerzo_fin: almFin };
+        if (!validateLunchForDay(dayData)) {
+          alert('El almuerzo debe quedar dentro del rango de trabajo del día seleccionado.');
+          return;
+        }
+      }
+
+      selectedDays.forEach((cb) => {
+        const dayId = Number(cb.value);
+        state.perDay[dayId] = {
+          ...state.perDay[dayId],
+          almuerzo_inicio: almInicio,
+          almuerzo_fin: almFin
+        };
+      });
+
+      alert('Horario de almuerzo guardado.');
+    });
+
+    $('btnSaveDates')?.addEventListener('click', () => {
+      const start = dateStart?.value || '';
+      const end = dateEnd?.value || '';
+      if (dateWarn) { dateWarn.style.display = 'none'; dateWarn.textContent = ''; }
+
+      if (!start || !end) {
+        alert('Selecciona fecha de inicio y fecha de fin.');
+        return;
+      }
+      if (start > end) {
+        if (dateWarn) {
+          dateWarn.textContent = 'La fecha de inicio no puede ser mayor que la fecha de fin.';
+          dateWarn.style.display = 'block';
+        }
+        return;
+      }
+
+      state.fecha_inicio = start;
+      state.fecha_fin = end;
+      alert('Fechas guardadas.');
+    });
+
+    $('btnUpdateAgenda')?.addEventListener('click', async () => {
+      try {
+        if (!state.businessId || !state.resourcesLoaded) {
+          alert('Debes seleccionar y verificar la barbería antes de actualizar la agenda.');
+          return;
+        }
+        if (!state.personalId) {
+          alert('Selecciona el personal para publicar la agenda.');
+          return;
+        }
+        if (!state.fecha_inicio || !state.fecha_fin) {
+          alert('Debes guardar el rango de fechas antes de actualizar la agenda.');
+          return;
+        }
+        if (state.fecha_inicio > state.fecha_fin) {
+          alert('La fecha de inicio no puede ser mayor que la fecha de fin.');
+          return;
+        }
+
+        const hasWorkingDay = Object.values(state.perDay).some((d) => d.trabaja);
+        if (!hasWorkingDay) {
+          alert('Debes configurar al menos un día de trabajo.');
+          return;
+        }
+
+        for (const dayData of Object.values(state.perDay)) {
+          if (!dayData.trabaja) continue;
+          if (!dayData.hora_inicio || !dayData.hora_fin || dayData.hora_inicio >= dayData.hora_fin) {
+            alert('Cada día laboral debe tener horas válidas (inicio menor a fin).');
+            return;
+          }
+          if (!validateLunchForDay(dayData)) {
+            alert('Revisa el horario de almuerzo: debe quedar dentro del rango laboral del día.');
+            return;
+          }
+        }
+
+        const usuarioId = getUsuarioId();
+        const { data: conjuntoData, error: conjuntoError } = await ConjuntoHorarioModel.create({
+          negocio_id: state.businessId,
+          personal_id: Number(state.personalId),
+          fecha_inicio: state.fecha_inicio,
+          fecha_fin: state.fecha_fin,
+          creado_por: usuarioId || null
+        });
+
+        if (conjuntoError) throw conjuntoError;
+
+        const conjuntoId = conjuntoData?.id;
+        if (!conjuntoId) throw new Error('No se pudo crear el conjunto de horario.');
+
+        const diasPayload = Object.entries(state.perDay).map(([dayId, cfg]) => ({
+          conjunto_horario_id: conjuntoId,
+          dia_id: Number(dayId),
+          trabaja: Boolean(cfg.trabaja),
+          hora_inicio: cfg.trabaja ? (cfg.hora_inicio || null) : null,
+          hora_fin: cfg.trabaja ? (cfg.hora_fin || null) : null,
+          almuerzo_inicio: cfg.trabaja && cfg.almuerzo_inicio ? cfg.almuerzo_inicio : null,
+          almuerzo_fin: cfg.trabaja && cfg.almuerzo_fin ? cfg.almuerzo_fin : null
+        }));
+
+        const { error: diasError } = await DiaHorarioModel.upsert(diasPayload);
+        if (diasError) throw diasError;
+
+        if (agendaSummary) agendaSummary.value = buildSummaryText();
+        alert('Agenda actualizada correctamente.');
+      } catch (error) {
+        console.error('Error al actualizar agenda:', error);
+        alert(`No se pudo actualizar la agenda. ${error?.message || ''}`.trim());
+      }
+    });
+  }
+
+  sameAllWeek?.addEventListener('change', () => {
+    if (sameWeekBlock) sameWeekBlock.style.display = sameAllWeek.checked ? 'block' : 'none';
   });
 
-  // Actualizar agenda (placeholder UI)
-  document.getElementById('btnUpdateAgenda')?.addEventListener('click', () => {
-    const txt = document.getElementById('agendaSummary');
-    if (txt) txt.value = 'Agenda actualizada (vista MVP). Conectaremos guardado real a Supabase en el siguiente paso.';
+  staffSelect?.addEventListener('change', () => {
+    state.personalId = staffSelect.value ? Number(staffSelect.value) : null;
+    state.personalName = staffSelect.options[staffSelect.selectedIndex]?.textContent || '';
   });
+
+  bizNameInput?.addEventListener('change', handleBusinessSelection);
+  bizNameInput?.addEventListener('blur', handleBusinessSelection);
+  btnVerifyBiz?.addEventListener('click', verifyAndLoadResources);
+
+  (async () => {
+    resetPerDayState();
+
+    const tpCommonStart = createTimePicker($('commonStart'));
+    const tpCommonEnd = createTimePicker($('commonEnd'));
+    const tpLunchStart = createTimePicker($('lunchStart'));
+    const tpLunchEnd = createTimePicker($('lunchEnd'));
+
+    renderDayCheckboxes($('commonDays'));
+    renderDayCheckboxes($('lunchDays'));
+    renderPerDayTable();
+    bindButtons(tpCommonStart, tpCommonEnd, tpLunchStart, tpLunchEnd);
+
+    try {
+      const { data: diasSemana } = await DiaHorarioModel.listDiasSemana();
+      if (Array.isArray(diasSemana) && diasSemana.length >= 7) {
+        state.dayIds = diasSemana.slice(0, 7).map((d) => Number(d.id));
+        resetPerDayState();
+        renderDayCheckboxes($('commonDays'));
+        renderDayCheckboxes($('lunchDays'));
+        renderPerDayTable();
+      }
+    } catch (error) {
+      console.error('No se pudo cargar dias_semana, se usará mapeo por defecto:', error);
+    }
+
+    await loadBusinesses();
+  })();
 }
