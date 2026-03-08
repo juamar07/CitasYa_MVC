@@ -2,6 +2,7 @@ import { supabase } from '../config/supabaseClient.js';
 import { NegocioModel } from '../models/NegocioModel.js';
 import { PersonalModel } from '../models/PersonalModel.js';
 import { ServicioModel } from '../models/ServicioModel.js';
+import { SolicitudAprobacionModel } from '../models/SolicitudAprobacionModel.js';
 
 export const BusinessService = {
   listPublic(){
@@ -12,25 +13,28 @@ export const BusinessService = {
     return NegocioModel.mine();
   },
 
+  async setBusinessKey(negocioId, plainKey){
+    const { data, error } = await supabase.functions.invoke('set-business-key', {
+      body: { negocio_id: Number(negocioId), clave: String(plainKey ?? '') }
+    });
+    if (error) throw error;
+    return data;
+  },
+
   async verifyBusinessKey(negocioId, plainKey){
     if (!negocioId) return { ok: false, message: 'Negocio inválido.' };
     if (!String(plainKey || '').trim()) return { ok: false, message: 'Debes ingresar la contraseña.' };
 
-    const { data, error, field } = await NegocioModel.readSecretByBusinessId(negocioId);
+    const { data, error } = await supabase.functions.invoke('verify-business-key', {
+      body: { negocio_id: Number(negocioId), clave: String(plainKey ?? '') }
+    });
+
     if (error) {
       console.error('Error verificando clave de negocio:', error);
       return { ok: false, message: 'No se pudo verificar la clave del negocio.' };
     }
 
-    if (!field) {
-      return { ok: false, message: 'El negocio no tiene un campo de clave configurado en BD.' };
-    }
-
-    const stored = String(data?.secret || '');
-    const provided = String(plainKey || '');
-    const ok = stored.length > 0 && stored === provided;
-
-    return { ok, message: ok ? 'Verificación exitosa.' : 'Contraseña incorrecta.' };
+    return data || { ok: false, message: 'No se pudo verificar la clave del negocio.' };
   },
 
   async detailWithResources(id, options = {}){
@@ -59,7 +63,10 @@ export const BusinessService = {
   },
 
   async registerBusinessFlow(payload){
-    const negocioPayload = payload?.negocio ?? {};
+    const negocioPayload = { ...(payload?.negocio ?? {}) };
+    const plainBusinessKey = negocioPayload.__businessKey;
+    if (negocioPayload.__businessKey !== undefined) delete negocioPayload.__businessKey;
+
     const serviciosPayload = Array.isArray(payload?.servicios) ? payload.servicios : [];
     const personalPayload  = Array.isArray(payload?.personal) ? payload.personal : [];
 
@@ -69,6 +76,11 @@ export const BusinessService = {
     const negocioRow = Array.isArray(negocioData) ? negocioData[0] : negocioData;
     const negocioId = negocioRow?.id ?? negocioPayload?.id;
     if (!negocioId) throw new Error('No se pudo resolver negocio_id.');
+    
+    if (plainBusinessKey && String(plainBusinessKey).trim()){
+      const r = await BusinessService.setBusinessKey(negocioId, String(plainBusinessKey).trim());
+      if (!r?.ok) throw new Error(r?.message || 'No se pudo guardar la clave del negocio.');
+    }
 
     const { data: oldServicios } = await supabase
       .from('servicios')
@@ -98,7 +110,7 @@ export const BusinessService = {
         nombre: (s.nombre ?? '').trim(),
         duracion_min: Number(s.duracion_min ?? 0),
         precio_cop: s.precio_cop === null || s.precio_cop === '' ? null : Number(s.precio_cop),
-        tokens: Number(s.tokens ?? 1)
+        costo_tokens: Number(s.tokens ?? 1)
       }));
 
     const { data: serviciosRows, error: serviciosErr } = await supabase
@@ -163,25 +175,64 @@ export const BusinessService = {
 
     if (personalErr) throw personalErr;
 
-    const serviceIdByIndex = (serviciosRows || []).map((r) => r.id);
-
     const firstIsOwner = Boolean(responsable?.nombre_completo);
     const relations = [];
 
-    personalPayload.forEach((p, idx) => {
-      const personalRow = personalRows?.[firstIsOwner ? idx + 1 : idx];
-      if (!personalRow?.id) return;
+    // Mapa robusto de servicios insertados por clave estable
+    const serviceIdMap = new Map(
+      (serviciosRows || []).map((r) => {
+        const key = `${String(r.nombre ?? '').trim()}__${Number(r.duracion_min ?? 0)}__${r.precio_cop === null || r.precio_cop === '' ? '' : Number(r.precio_cop)}`;
+        return [key, r.id];
+      })
+    );
+
+    // Mapa robusto de personal insertado por nombre_publico
+    const personalIdMap = new Map(
+      (personalRows || []).map((p) => [String(p.nombre_publico ?? '').trim(), p.id])
+    );
+
+    personalPayload.forEach((p) => {
+      const personalName = String(p?.nombre_publico ?? '').trim();
+      const personalId = personalIdMap.get(personalName);
+      if (!personalId) return;
 
       (p.servicios || []).forEach((serviceIndex) => {
-        const servicioId = serviceIdByIndex?.[serviceIndex];
+        const originalService = serviciosPayload?.[serviceIndex];
+        if (!originalService) return;
+
+        const serviceKey = `${String(originalService.nombre ?? '').trim()}__${Number(originalService.duracion_min ?? 0)}__${originalService.precio_cop === null || originalService.precio_cop === '' ? '' : Number(originalService.precio_cop)}`;
+        const servicioId = serviceIdMap.get(serviceKey);
+
         if (!servicioId) return;
-        relations.push({ personal_id: personalRow.id, servicio_id: servicioId });
+        relations.push({ personal_id: personalId, servicio_id: servicioId });
       });
     });
 
     if (relations.length){
       const { error: relErr } = await supabase.from('personal_servicio').insert(relations);
       if (relErr) throw relErr;
+    }
+
+    // Crear solicitud de aprobación para el negocio
+    try {
+      const { data: auth } = await supabase.auth.getUser();
+      const authId = auth?.user?.id;
+
+      if (authId){
+        const { data: uRow } = await supabase
+          .from('usuarios')
+          .select('id')
+          .eq('auth_user_id', authId)
+          .maybeSingle();
+
+        const usuarioId = uRow?.id;
+
+        if (usuarioId){
+          await SolicitudAprobacionModel.createNegocio(usuarioId, negocioId);
+        }
+      }
+    }catch(e){
+      console.error('No se pudo crear la solicitud de aprobación del negocio:', e);
     }
 
     return { negocio: negocioRow, servicios: serviciosRows, personal: personalRows };

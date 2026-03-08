@@ -23,34 +23,73 @@ export default async function BarberoMiAgendaView(){
 
   const nombre = u?.nombre_completo || 'Mi agenda';
 
-  // 2) obtener personal_id del barbero (para horario)
-  const { data: personal } = await supabase
-    .from('personal')
-    .select('id')
-    .eq('usuario_id', usuarioId)
-    .single();
+  // 2) revisar si existe contexto de agenda seleccionado
+  let ctx = null;
+  try {
+    ctx = JSON.parse(sessionStorage.getItem('cy_edit_agenda_ctx') || 'null');
+  } catch (_e) {}
+
+  let personalRows = [];
+  let personalIds = [];
+
+  if (ctx?.personal_id) {
+    // usar directamente el personal seleccionado
+    personalIds = [ctx.personal_id];
+
+    const { data } = await supabase
+      .from('personal')
+      .select('id, negocio_id, nombre_publico')
+      .eq('id', ctx.personal_id);
+
+    personalRows = data || [];
+  } else {
+    // fallback: obtener todos los personal del usuario
+    const { data } = await supabase
+      .from('personal')
+      .select('id, negocio_id, nombre_publico')
+      .eq('usuario_id', usuarioId)
+      .order('id', { ascending: false });
+
+    personalRows = data || [];
+    personalIds = personalRows.map((p) => p.id).filter(Boolean);
+  }
 
   // 3) citas
   const citas = await BarberoAgendaController.miAgenda();
 
   // 4) pintar citas (con fallback)
-const rows = (citas||[]).map(c => `
-    <tr>
-      <td>${c.asistente ?? '-'}</td>
-      <td>${formatDate(c.fecha ?? (c.inicia_en?.substring?.(0,10) || ''))}</td>
-      <td>${formatTime(c.inicia_en)}</td>
-      <td>${formatTime(c.termina_en)}</td>
-      <td>${c.servicio ?? (c.servicio_id ?? '-')}</td>
-    </tr>
-  `).join('') || `<tr><td colspan="5" class="muted">No hay citas para mostrar.</td></tr>`;
+  const rows = (citas||[]).map(c => `
+      <tr>
+        <td>${c.asistente ?? '-'}</td>
+        <td>${formatDate(c.fecha ?? (c.inicia_en?.substring?.(0,10) || ''))}</td>
+        <td>${formatTime(c.inicia_en)}</td>
+        <td>${formatTime(c.termina_en)}</td>
+        <td>${c.servicio ?? (c.servicio_id ?? '-')}</td>
+      </tr>
+    `).join('') || `<tr><td colspan="5" class="muted">No hay citas para mostrar.</td></tr>`;
 
   // 5) horario (si existe en BD)
   let scheduleHtml = `<div class="muted">No hay un horario publicado aún.</div>`;
   let rangeInfo = '';
+  let editContext = null;
 
-  if (personal?.id) {
-    const { data: conjuntos } = await ConjuntoHorarioModel.listByPersonal(personal.id);
-    const last = Array.isArray(conjuntos) && conjuntos.length ? conjuntos[conjuntos.length - 1] : null;
+  if (personalIds.length) {
+    let last = null;
+
+      if (ctx?.negocio_id && ctx?.personal_id) {
+
+        const { data } = await ConjuntoHorarioModel
+          .latestByBusinessAndPersonal(ctx.negocio_id, ctx.personal_id);
+
+        last = data || null;
+
+      } else {
+
+        const { data } = await ConjuntoHorarioModel.listByPersonalIds(personalIds);
+
+        last = Array.isArray(data) && data.length ? data[0] : null;
+
+      }
 
     if (last?.id) {
       const { data: dias } = await DiaHorarioModel.listByConjunto(last.id);
@@ -59,7 +98,7 @@ const rows = (citas||[]).map(c => `
         const dayNames = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
 
         const body = dias.map(d => {
-          const rawIdx = Number(pick(d, ['dia_id','dia_semana','dia','dia_idx'], -1));
+          const rawIdx = Number(pick(d, ['dia_id','dia_semana_id','dia_semana','dia','dia_idx'], -1));
           const idx = rawIdx >= 1 && rawIdx <= 7 ? rawIdx - 1 : rawIdx;
           const day = dayNames[idx] || `Día ${rawIdx}`;
 
@@ -95,8 +134,25 @@ const rows = (citas||[]).map(c => `
         const ds = pick(last, ['fecha_inicio','date_start','inicio'], '');
         const de = pick(last, ['fecha_fin','date_end','fin'], '');
         if (ds && de) rangeInfo = `Rango de fechas: ${ds} → ${de}`;
+
+        const matchingPersonal = (personalRows || []).find((p) => Number(p.id) === Number(last.personal_id)) || null;
+
+        editContext = {
+          conjunto_horario_id: last.id,
+          negocio_id: last.negocio_id,
+          personal_id: last.personal_id,
+          personal_nombre: matchingPersonal?.nombre_publico || '',
+          fecha_inicio: last.fecha_inicio || '',
+          fecha_fin: last.fecha_fin || ''
+        };
       }
     }
+  }
+
+  if (editContext) {
+    try {
+      sessionStorage.setItem('cy_edit_agenda_ctx', JSON.stringify(editContext));
+    } catch (_e) {}
   }
 
   return `
@@ -234,9 +290,35 @@ const rows = (citas||[]).map(c => `
 }
 
 export function onMount(){
-  document.getElementById('btnBack')?.addEventListener('click', (e)=>{ e.preventDefault(); navigate('/barbero/organizar-agenda'); });
-  document.getElementById('btnEdit')?.addEventListener('click', ()=> navigate('/barbero/organizar-agenda'));
-  document.getElementById('btnHome')?.addEventListener('click', (e)=>{ e.preventDefault(); navigate('/'); });
+  document.getElementById('btnBack')?.addEventListener('click', (e)=>{ 
+    e.preventDefault(); 
+    navigate('/barbero/organizar-agenda'); 
+  });
+
+  document.getElementById('btnEdit')?.addEventListener('click', ()=>{
+    try {
+      const scheduleView = document.getElementById('scheduleView');
+      const rangeInfo = document.getElementById('rangeInfo')?.textContent || '';
+      const hasSchedule = scheduleView && !/No hay un horario publicado aún/i.test(scheduleView.textContent || '');
+
+      if (hasSchedule) {
+        const existingCtx = sessionStorage.getItem('cy_edit_agenda_ctx');
+        if (existingCtx) {
+          navigate('/barbero/organizar-agenda');
+          return;
+        }
+      }
+
+      navigate('/barbero/organizar-agenda');
+    } catch (_e) {
+      navigate('/barbero/organizar-agenda');
+    }
+  });
+
+  document.getElementById('btnHome')?.addEventListener('click', (e)=>{ 
+    e.preventDefault(); 
+    navigate('/'); 
+  });
 
   document.getElementById('btnICS')?.addEventListener('click', ()=>{
     alert('Exportación ICS pendiente de conectar en MVC (la UI ya está lista).');

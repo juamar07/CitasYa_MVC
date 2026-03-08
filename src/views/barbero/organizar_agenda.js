@@ -273,6 +273,8 @@ export function onMount() {
     personalName: '',
     fecha_inicio: '',
     fecha_fin: '',
+    currentConjuntoId: null,
+    editCtx: null,
     perDay: {},
     perDayInputs: {}
   };
@@ -294,7 +296,22 @@ export function onMount() {
   const dateWarn = $('dateWarn');
   const agendaSummary = $('agendaSummary');
 
-  document.getElementById('btnMiAgenda')?.addEventListener('click', () => navigate('/barbero/mi-agenda'));
+  document.getElementById('btnMiAgenda')?.addEventListener('click', () => {
+    try {
+      const ctx = {
+        conjunto_horario_id: state.currentConjuntoId || null,
+        negocio_id: state.businessId || null,
+        negocio_nombre: state.businessName || '',
+        personal_id: state.personalId || null,
+        personal_nombre: state.personalName || '',
+        fecha_inicio: state.fecha_inicio || '',
+        fecha_fin: state.fecha_fin || ''
+      };
+      sessionStorage.setItem('cy_edit_agenda_ctx', JSON.stringify(ctx));
+    } catch (_e) {}
+    navigate('/barbero/mi-agenda');
+  });
+
   document.getElementById('btnPagos')?.addEventListener('click', () => navigate('/pagos'));
   document.getElementById('btnBack')?.addEventListener('click', (e) => { e.preventDefault(); history.back(); });
   document.getElementById('btnHome')?.addEventListener('click', (e) => { e.preventDefault(); navigate('/'); });
@@ -472,6 +489,74 @@ export function onMount() {
     return lines.join('\n');
   }
 
+    function applyStateToPerDayUI() {
+    Object.entries(state.perDayInputs || {}).forEach(([dayId, refs]) => {
+      const row = state.perDay?.[Number(dayId)];
+      if (!row || !refs) return;
+
+      refs.cb.checked = Boolean(row.trabaja);
+      refs.tpStart.set(row.hora_inicio || '');
+      refs.tpEnd.set(row.hora_fin || '');
+    });
+  }
+
+  async function loadLatestAgendaForCurrentSelection() {
+    if (!state.businessId || !state.personalId) return;
+
+    try {
+      const { data: conjunto, error: conjuntoError } =
+        await ConjuntoHorarioModel.latestByBusinessAndPersonal(state.businessId, Number(state.personalId));
+
+      if (conjuntoError) throw conjuntoError;
+
+      if (!conjunto?.id) {
+        state.currentConjuntoId = null;
+        state.fecha_inicio = '';
+        state.fecha_fin = '';
+        if (dateStart) dateStart.value = '';
+        if (dateEnd) dateEnd.value = '';
+        resetPerDayState();
+        applyStateToPerDayUI();
+        if (agendaSummary) agendaSummary.value = '';
+        return;
+      }
+
+      state.currentConjuntoId = conjunto.id;
+      state.fecha_inicio = conjunto.fecha_inicio || '';
+      state.fecha_fin = conjunto.fecha_fin || '';
+
+      if (dateStart) dateStart.value = state.fecha_inicio;
+      if (dateEnd) dateEnd.value = state.fecha_fin;
+
+      resetPerDayState();
+
+      const { data: dias, error: diasError } = await DiaHorarioModel.listByConjunto(conjunto.id);
+      if (diasError) throw diasError;
+
+      (dias || []).forEach((d) => {
+        const dayId = Number(d.dia_id ?? d.dia_semana_id ?? d.dia ?? 0);
+        if (!dayId || !state.perDay[dayId]) return;
+
+        state.perDay[dayId] = {
+          ...state.perDay[dayId],
+          trabaja: Boolean(d.trabaja),
+          hora_inicio: d.hora_inicio || '',
+          hora_fin: d.hora_fin || '',
+          almuerzo_inicio: d.almuerzo_inicio || '',
+          almuerzo_fin: d.almuerzo_fin || ''
+        };
+      });
+
+      applyStateToPerDayUI();
+
+      if (agendaSummary) {
+        agendaSummary.value = buildSummaryText();
+      }
+    } catch (error) {
+      console.error('Error cargando agenda existente:', error);
+    }
+  }
+
   async function loadBusinesses() {
     try {
       const { data, error } = await BusinessService.myBusinesses();
@@ -560,6 +645,27 @@ export function onMount() {
       }
 
       state.resourcesLoaded = true;
+        try {
+          const raw = sessionStorage.getItem('cy_edit_agenda_ctx');
+          const ctx = raw ? JSON.parse(raw) : null;
+
+          if (ctx && Number(ctx.negocio_id) === Number(state.businessId)) {
+            state.editCtx = ctx;
+
+            if (staffSelect && ctx.personal_id) {
+              const exists = Array.from(staffSelect.options).find((o) => Number(o.value) === Number(ctx.personal_id));
+              if (exists) {
+                staffSelect.value = String(ctx.personal_id);
+                state.personalId = Number(ctx.personal_id);
+                state.personalName = exists.textContent || '';
+                await loadLatestAgendaForCurrentSelection();
+              }
+            }
+          }
+        } catch (error) {
+          console.error('No se pudo cargar contexto de edición:', error);
+        }
+        
       if (bizState) {
         bizState.textContent = 'Cargada';
         bizState.className = 'badge badge-ok';
@@ -694,21 +800,44 @@ export function onMount() {
         }
 
         const usuarioId = getUsuarioId();
-        const { data: conjuntoData, error: conjuntoError } = await ConjuntoHorarioModel.create({
-          negocio_id: state.businessId,
-          personal_id: Number(state.personalId),
-          fecha_inicio: state.fecha_inicio,
-          fecha_fin: state.fecha_fin,
-          creado_por: usuarioId || null
-        });
+        let conjuntoId = state.currentConjuntoId;
+
+        if (!conjuntoId) {
+          const { data: existingConjunto } = await ConjuntoHorarioModel.latestByBusinessAndPersonal(
+            state.businessId,
+            Number(state.personalId)
+          );
+
+          if (
+            existingConjunto?.id &&
+            String(existingConjunto.fecha_inicio || '') === String(state.fecha_inicio || '') &&
+            String(existingConjunto.fecha_fin || '') === String(state.fecha_fin || '')
+          ) {
+            conjuntoId = existingConjunto.id;
+          }
+        }
+
+        if (!conjuntoId) {
+          const { data: conjuntoData, error: conjuntoError } = await ConjuntoHorarioModel.create({
+            negocio_id: state.businessId,
+            personal_id: Number(state.personalId),
+            fecha_inicio: state.fecha_inicio,
+            fecha_fin: state.fecha_fin,
+            creado_por: usuarioId || null
+          });
+          if (conjuntoError) throw conjuntoError;
+          conjuntoId = conjuntoData?.id;
+        }
+
+        state.currentConjuntoId = conjuntoId;
 
         if (conjuntoError) throw conjuntoError;
 
-        const conjuntoId = conjuntoData?.id;
-        if (!conjuntoId) throw new Error('No se pudo crear el conjunto de horario.');
+        const nuevoConjuntoId = conjuntoData?.id;
+        if (!nuevoConjuntoId) throw new Error('No se pudo crear el conjunto de horario.');
 
         const diasPayload = Object.entries(state.perDay).map(([dayId, cfg]) => ({
-          conjunto_horario_id: conjuntoId,
+          conjunto_horario_id: nuevoConjuntoId,
           dia_id: Number(dayId),
           trabaja: Boolean(cfg.trabaja),
           hora_inicio: cfg.trabaja ? (cfg.hora_inicio || null) : null,
@@ -733,9 +862,13 @@ export function onMount() {
     if (sameWeekBlock) sameWeekBlock.style.display = sameAllWeek.checked ? 'block' : 'none';
   });
 
-  staffSelect?.addEventListener('change', () => {
+  staffSelect?.addEventListener('change', async () => {
     state.personalId = staffSelect.value ? Number(staffSelect.value) : null;
     state.personalName = staffSelect.options[staffSelect.selectedIndex]?.textContent || '';
+
+    if (state.resourcesLoaded && state.personalId) {
+      await loadLatestAgendaForCurrentSelection();
+    }
   });
 
   bizNameInput?.addEventListener('change', handleBusinessSelection);
@@ -769,5 +902,17 @@ export function onMount() {
     }
 
     await loadBusinesses();
-  })();
-}
+
+    try {
+        const raw = sessionStorage.getItem('cy_edit_agenda_ctx');
+        const ctx = raw ? JSON.parse(raw) : null;
+
+        if (ctx?.negocio_nombre && bizNameInput) {
+          bizNameInput.value = ctx.negocio_nombre;
+          handleBusinessSelection();
+        }
+      } catch (error) {
+        console.error('No se pudo restaurar barbería en edición:', error);
+      }
+    })();
+  }
