@@ -1,13 +1,12 @@
-// src/views/cliente/cancelar.js
 import { navigate } from '../../router/index.js';
 import { getUsuarioId } from '../../store/auth.js';
 import { CitaModel } from '../../models/CitaModel.js';
-import { CancelacionCitaModel } from '../../models/CancelacionCitaModel.js';
 import { AppointmentService } from '../../services/AppointmentService.js';
 import { AvailabilityService } from '../../services/AvailabilityService.js';
 import { BusinessService } from '../../services/BusinessService.js';
 import { ConjuntoHorarioModel } from '../../models/ConjuntoHorarioModel.js';
 import { DiaHorarioModel } from '../../models/DiaHorarioModel.js';
+import { supabase } from '../../config/supabaseClient.js';
 
 function esc(s=''){ return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
 
@@ -48,19 +47,6 @@ function toMin(hhmm){
 }
 function within(a, b, x){ // a<=x<b (minutos)
   return x >= a && x < b;
-}
-
-async function resolveCancelStateId(){
-  // intentamos nombres comunes (sin asumir uno solo)
-  const candidates = ['cancelada', 'cancelado', 'cancelar', 'anulada', 'anulado'];
-  let lastErr = null;
-  for (const name of candidates){
-    try{
-      const id = await AppointmentService._estadoId(name);
-      if (id) return id;
-    }catch(e){ lastErr = e; }
-  }
-  throw lastErr || new Error('No se pudo resolver estado_id de cancelación en estado_cita.');
 }
 
 function formatCitaLine(c){
@@ -365,7 +351,7 @@ export async function onMount(){
   const $ = (s) => document.querySelector(s);
 
   // navegación
-  $('#btnBack')?.addEventListener('click', (e)=>{ e.preventDefault(); navigate('/cliente/agendar'); });
+  $('#btnBack')?.addEventListener('click', (e)=>{ e.preventDefault(); navigate('/cliente/agendar-publico'); });
   $('#btnHome')?.addEventListener('click', (e)=>{ e.preventDefault(); navigate('/'); });
 
   const usuarioId = getUsuarioId();
@@ -379,7 +365,10 @@ export async function onMount(){
   let citas = [];
   let selected = null;         // cita seleccionada (detallada)
   let recursos = null;         // { negocio, personal, servicios }
-  let cancelStateId = null;
+  let cancelStateIds = [];
+  let attendeeName = '';
+
+  const attendeeInp = $('#attendee');
 
   const accion = $('#accion');
 
@@ -413,6 +402,25 @@ export async function onMount(){
     el.textContent = msg || '';
   }
 
+  async function loadSessionAttendee() {
+  attendeeName = '';
+
+  const { data, error } = await supabase
+    .from('usuarios')
+    .select('nombre_completo')
+    .eq('id', usuarioId)
+    .single();
+
+  if (!error && data?.nombre_completo) {
+    attendeeName = String(data.nombre_completo).trim();
+  }
+
+  if (attendeeInp) {
+    attendeeInp.value = attendeeName || '';
+    attendeeInp.placeholder = attendeeName ? '' : 'No se pudo cargar el nombre del asistente';
+  }
+  }
+
   function clearAll(){
     selected = null;
     recursos = null;
@@ -440,7 +448,9 @@ export async function onMount(){
 
   async function renderCitas(){
     // cargar citas del usuario (detalladas)
-    const { data } = await CitaModel.byClienteDetailed(usuarioId);
+    const { data } = await CitaModel.byClienteDetailed(usuarioId, {
+      excludeEstadoIds: cancelStateIds
+    });
     citas = Array.isArray(data) ? data : [];
 
     // por defecto mostramos siempre la sección
@@ -519,12 +529,13 @@ export async function onMount(){
     svcDur.textContent = mins ? `Duración: ${mins} min` : 'Duración: —';
   }
 
-  function updateSummaries(){
+  function updateSummaries() {
     if (!selected) return;
 
-    // anterior
+    const sessionName = attendeeName || 'Usuario autenticado';
+
     oldSummary.value = [
-      `Asistente: (sesión)`,
+      `Asistente: ${sessionName}`,
       `Establecimiento: ${bizName.value || ''}`,
       `Servicio: ${svcSel.options[svcSel.selectedIndex]?.textContent || ''}`,
       `Barbero: ${staffSel.options[staffSel.selectedIndex]?.textContent || ''}`,
@@ -532,13 +543,13 @@ export async function onMount(){
       `Hora: ${toLocalTimeValue(selected.inicia_en)} - ${toLocalTimeValue(selected.termina_en)}`
     ].join('\n');
 
-    // nueva (si hay fecha y hora)
     const hhmm = timeSel.value || '';
     const date = dateInp.value || '';
     const svcText = svcSel.options[svcSel.selectedIndex]?.textContent || '';
     const staffText = staffSel.options[staffSel.selectedIndex]?.textContent || '';
+
     newSummary.value = [
-      `Asistente: (sesión)`,
+      `Asistente: ${sessionName}`,
       `Establecimiento: ${bizName.value || ''}`,
       `Servicio: ${svcText}`,
       `Barbero: ${staffText}`,
@@ -640,46 +651,48 @@ export async function onMount(){
   dateInp?.addEventListener('change', async ()=>{ await refreshSlots(); updateSummaries(); });
   timeSel?.addEventListener('change', ()=>{ updateSummaries(); });
 
-  btnCancelar?.addEventListener('click', async (e)=>{
+  btnCancelar?.addEventListener('click', async (e) => {
     e.preventDefault();
     showErr(cancelErr, '');
 
     if (!selected) return showErr(cancelErr, 'Selecciona una cita.');
+
     const mot = (motivo.value || '').trim();
     if (!mot) return showErr(cancelErr, 'Escribe un motivo de cancelación.');
 
-    try{
-      if (!cancelStateId) cancelStateId = await resolveCancelStateId();
-
-      // 1) registrar cancelación
-      const cancelPayload = {
+    try {
+      await AppointmentService.cancel({
         cita_id: Number(selected.id),
         usuario_id_cancelo: Number(usuarioId),
-        motivo: mot,
-        cancelado_en: new Date().toISOString()
-      };
-      const { error: cErr } = await CancelacionCitaModel.create(cancelPayload);
-      if (cErr) throw cErr;
+        motivo: mot
+      });
 
-      // 2) actualizar estado cita
-      const { error: uErr } = await CitaModel.update(selected.id, { estado_id: cancelStateId });
-      if (uErr) throw uErr;
-
-      // refrescar
       clearAll();
+
+      cancelStateIds = await AppointmentService._estadoIds([
+        'cancelada',
+        'cancelado',
+        'cancelar',
+        'anulada',
+        'anulado'
+      ]).catch(() => []);
+
       await renderCitas();
-    }catch(err){
+    } catch (err) {
+      console.error('Error cancelando cita:', err);
       showErr(cancelErr, err?.message || 'Error cancelando la cita.');
     }
   });
 
-  btnReagendar?.addEventListener('click', async (e)=>{
+  btnReagendar?.addEventListener('click', async (e) => {
     e.preventDefault();
     showErr(reErr, '');
 
     if (!selected) return showErr(reErr, 'Selecciona una cita.');
+
     const dateStr = dateInp.value;
     const hhmm = timeSel.value;
+
     if (!dateStr) return showErr(reErr, 'Selecciona una fecha.');
     if (!hhmm) return showErr(reErr, 'Selecciona una hora.');
 
@@ -687,54 +700,62 @@ export async function onMount(){
     const personal_id = Number(staffSel.value);
     const servicio_id = Number(svcSel.value);
 
-    try{
-      if (!cancelStateId) cancelStateId = await resolveCancelStateId();
-
-      // 1) cancelar cita anterior (registro + estado)
-      const mot = `Re-agendación solicitada por el usuario.`;
-      const cancelPayload = {
-        cita_id: Number(selected.id),
-        usuario_id_cancelo: Number(usuarioId),
-        motivo: mot,
-        cancelado_en: new Date().toISOString()
-      };
-      const { error: cErr } = await CancelacionCitaModel.create(cancelPayload);
-      if (cErr) throw cErr;
-
-      const { error: uErr } = await CitaModel.update(selected.id, { estado_id: cancelStateId });
-      if (uErr) throw uErr;
-
-      // 2) crear nueva cita
+    try {
       const startISO = new Date(`${dateStr}T${hhmm}:00`).toISOString();
 
-      // validación final de colisión
-      // (duración la resuelve AppointmentService internamente)
-      const { data: svcRow } = await (await import('../../config/supabaseClient.js')).supabase
+      const { data: svcRow } = await supabase
         .from('servicios')
         .select('duracion_min')
         .eq('id', servicio_id)
         .single();
-      const durMin = Number(svcRow?.duracion_min ?? 0);
 
+      const durMin = Number(svcRow?.duracion_min ?? 0);
       const free = await AvailabilityService.isFree(personal_id, startISO, durMin);
       if (!free) throw new Error('Esa hora ya no está disponible. Selecciona otra.');
+
+      await AppointmentService.cancel({
+        cita_id: Number(selected.id),
+        usuario_id_cancelo: Number(usuarioId),
+        motivo: 'Re-agendación solicitada por el usuario.'
+      });
 
       const { error: sErr } = await AppointmentService.schedule({
         usuario_cliente_id: Number(usuarioId),
         negocio_id,
         personal_id,
         servicio_id,
-        inicia_en: startISO
+        inicia_en: startISO,
+        nombre_invitado: attendeeName || null
       });
       if (sErr) throw sErr;
 
       clearAll();
+
+      cancelStateIds = await AppointmentService._estadoIds([
+        'cancelada',
+        'cancelado',
+        'cancelar',
+        'anulada',
+        'anulado'
+      ]).catch(() => []);
+
       await renderCitas();
-    }catch(err){
+    } catch (err) {
+      console.error('Error re-agendando cita:', err);
       showErr(reErr, err?.message || 'Error re-agendando la cita.');
     }
   });
 
   // init
+  await loadSessionAttendee();
+
+  cancelStateIds = await AppointmentService._estadoIds([
+    'cancelada',
+    'cancelado',
+    'cancelar',
+    'anulada',
+    'anulado'
+  ]).catch(() => []);
+
   await renderCitas();
 }

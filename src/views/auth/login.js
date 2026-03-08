@@ -129,7 +129,7 @@ export function onMount(){
  
       if (role === 'administrador')      navigate('/admin');
       else if (role === 'barbero')       navigate('/barbero/organizar-agenda');
-      else                               navigate('/cliente/agendar'); // cliente por defecto
+      else                               navigate('/cliente/agendar-publico'); // cliente por defecto
     });
   }
 }

@@ -55,16 +55,17 @@ export default async function BarberoMiAgendaView(){
   }
 
   // 3) citas
-  const citas = await BarberoAgendaController.miAgenda();
+  const citas = await BarberoAgendaController.miAgenda(ctx?.personal_id || null);
 
   // 4) pintar citas (con fallback)
   const rows = (citas||[]).map(c => `
       <tr>
-        <td>${c.asistente ?? '-'}</td>
+        <td>${c.nombre_invitado ?? c.usuarios?.nombre_completo ?? '-'}</td>
         <td>${formatDate(c.fecha ?? (c.inicia_en?.substring?.(0,10) || ''))}</td>
         <td>${formatTime(c.inicia_en)}</td>
         <td>${formatTime(c.termina_en)}</td>
-        <td>${c.servicio ?? (c.servicio_id ?? '-')}</td>
+        <td>${c.servicios?.nombre ?? c.servicio ?? (c.servicio_id ?? '-')}</td>
+
       </tr>
     `).join('') || `<tr><td colspan="5" class="muted">No hay citas para mostrar.</td></tr>`;
 

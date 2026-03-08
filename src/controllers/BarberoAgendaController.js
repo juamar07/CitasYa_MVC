@@ -1,21 +1,33 @@
 import { CitaModel } from '../models/CitaModel.js';
+import { EstadoCitaModel } from '../models/EstadoCitaModel.js';
 import { supabase } from '../config/supabaseClient.js';
 import { getUsuarioId } from '../store/auth.js';
 
 export const BarberoAgendaController = {
-  async miAgenda(){
+  async miAgenda(personalId = null) {
     const usuarioId = getUsuarioId();
+    const cancelNames = ['cancelada', 'cancelado', 'cancelar', 'anulada', 'anulado'];
 
-    // ✅ buscar personal del barbero por usuario_id (NO por personal.id)
-    const { data: personal, error } = await supabase
+    const { data: cancelStates } = await EstadoCitaModel.byNames(cancelNames);
+    const excludeEstadoIds = (cancelStates || []).map(r => Number(r.id)).filter(Boolean);
+
+    // Si llega un personal_id específico, usarlo directamente
+    if (personalId) {
+      return (await CitaModel.byStaff(Number(personalId), { excludeEstadoIds })).data || [];
+    }
+
+    // Buscar todos los registros de personal asociados al usuario barbero
+    const { data: personalRows, error } = await supabase
       .from('personal')
       .select('id')
       .eq('usuario_id', usuarioId)
-      .single();
+      .order('id', { ascending: false });
 
-    if (error || !personal?.id) return [];
+    if (error || !Array.isArray(personalRows) || !personalRows.length) return [];
 
-    // citas por personal_id
-    return (await CitaModel.byStaff(personal.id)).data || [];
+    const personalIds = personalRows.map((p) => Number(p.id)).filter(Boolean);
+    if (!personalIds.length) return [];
+
+    return (await CitaModel.byStaff(personalIds, { excludeEstadoIds })).data || [];
   }
 };

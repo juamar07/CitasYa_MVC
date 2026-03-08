@@ -1,4 +1,38 @@
 import { navigate } from '../../router/index.js';
+import { initAuth, getUser, getRole } from '../../store/auth.js';
+import { AuthController } from '../../controllers/AuthController.js';
+import { ClienteAppointmentsController } from '../../controllers/ClienteAppointmentsController.js';
+import { BusinessService } from '../../services/BusinessService.js';
+import { PersonalServicioModel } from '../../models/PersonalServicioModel.js';
+import { ConjuntoHorarioModel } from '../../models/ConjuntoHorarioModel.js';
+import { DiaHorarioModel } from '../../models/DiaHorarioModel.js';
+import { AvailabilityService } from '../../services/AvailabilityService.js';
+
+function normText(s = '') {
+  return String(s)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+}
+
+function dayIndexFromDate(dateStr) {
+  const d = new Date(`${dateStr}T00:00:00`);
+  const js = d.getDay();
+  return js === 0 ? 6 : js - 1;
+}
+
+function pick(obj, keys, fallback = null) {
+  for (const k of keys) {
+    if (obj && obj[k] !== undefined && obj[k] !== null && obj[k] !== '') return obj[k];
+  }
+  return fallback;
+}
+
+function toMin(hhmm) {
+  const [h, m] = String(hhmm).split(':').map(Number);
+  return h * 60 + m;
+}
 
 export default async function ClienteAgendarPublicoView({ query }) {
   const negocio = query.get('negocio') || '';
@@ -42,19 +76,6 @@ export default async function ClienteAgendarPublicoView({ query }) {
       border-radius:10px;
       border-left:var(--container-bl) solid var(--c-primary);
     }
-
-    /* Banner Home */
-    .home-banner{
-      margin-bottom: 25px;
-    }
-    .home-banner img{
-      width: 100%;
-      height: auto;
-      border-radius: 6px;
-      display: block;
-      box-shadow: 0 2px 5px rgba(0,0,0,0.10);
-    }
-
     h1{ text-align:center; font-size:30px; margin:.3rem 0 1.2rem; }
     label{ display:block; margin:10px 0 6px; color:var(--c-text); }
     input[type="text"], input[type="date"], select, textarea{
@@ -144,9 +165,6 @@ export default async function ClienteAgendarPublicoView({ query }) {
   </header>
 
   <div class="container">
-      <div class="home-banner">
-        <img src="assets/img/BannerCitasYa.png" alt="Banner Barbería Citas Ya">
-      </div>
     <h1>Programación de Citas</h1>
 
     <label>Ingrese nombre completo del asistente</label>
@@ -231,39 +249,270 @@ export default async function ClienteAgendarPublicoView({ query }) {
 }
 
 export function onMount() {
-  // Menú hamburguesa
+  const state = {
+    negocios: [],
+    negocioSel: null,
+    personal: [],
+    servicios: [],
+    serviciosFiltrados: []
+  };
+
   const burger = document.getElementById('btn_burger');
   const menu = document.getElementById('menu');
-  menu?.addEventListener('click', (e) => e.stopPropagation());
+  const modal = document.getElementById('modalAuth');
+
+  const asistente = document.getElementById('asistente');
+  const bizName = document.getElementById('bizName');
+  const bizlist = document.getElementById('bizlist');
+  const barbero = document.getElementById('barbero');
+  const servicio = document.getElementById('servicio');
+  const duracionHint = document.getElementById('duracionHint');
+  const fecha = document.getElementById('fecha');
+  const timeSel = document.getElementById('timeSel');
+  const timeHelp = document.getElementById('timeHelp');
+  const resumen = document.getElementById('resumen');
+
+  const modalMap = document.getElementById('modalMap');
+  const bizList = document.getElementById('bizList');
+
+  const openModal = () => { if (modal) modal.style.display = 'flex'; };
+  const closeModal = () => { if (modal) modal.style.display = 'none'; };
+
+  function updateSummary() {
+    const bizTxt = state.negocioSel?.nombre || '—';
+    const staffTxt = barbero.options[barbero.selectedIndex]?.textContent || '—';
+    const svcTxt = servicio.options[servicio.selectedIndex]?.textContent || '—';
+    const dateTxt = fecha.value || '—';
+    const timeTxt = timeSel.value || '—';
+    resumen.value = [
+      `Asistente: ${asistente.value || '—'}`,
+      `Barbería: ${bizTxt}`,
+      `Barbero: ${staffTxt}`,
+      `Servicio: ${svcTxt}`,
+      `Fecha: ${dateTxt}`,
+      `Hora: ${timeTxt}`
+    ].join('\n');
+  }
+
+  function resetServiciosYHoras() {
+    state.serviciosFiltrados = [];
+    servicio.innerHTML = '<option value="">— Seleccione —</option>';
+    duracionHint.textContent = 'Duración: —';
+    timeSel.disabled = true;
+    timeSel.innerHTML = '<option value="">— Selecciona fecha, servicio y barbero —</option>';
+    timeHelp.textContent = '';
+  }
+
+  function resetBarberos() {
+    state.personal = [];
+    barbero.innerHTML = '<option value="">— Seleccione —</option>';
+    resetServiciosYHoras();
+  }
+
+  async function getHorarioDia(personalId, dateStr) {
+    const { data: conjuntos, error: cErr } = await ConjuntoHorarioModel.listByPersonal(personalId);
+    if (cErr) throw cErr;
+    const last = Array.isArray(conjuntos) && conjuntos.length ? conjuntos[conjuntos.length - 1] : null;
+    if (!last?.id) return null;
+
+    const { data: dias, error: dErr } = await DiaHorarioModel.listByConjunto(last.id);
+    if (dErr) throw dErr;
+    if (!Array.isArray(dias) || !dias.length) return null;
+
+    const idx = dayIndexFromDate(dateStr);
+    const dia = dias.find((d) => {
+      const v = Number(pick(d, ['dia_id', 'dia_semana', 'dia', 'dia_idx'], -999));
+      return v === idx || v === (idx + 1);
+    });
+    return dia || null;
+  }
+
+  async function buildSlots({ personalId, dateStr, duracionMin }) {
+    const dia = await getHorarioDia(personalId, dateStr);
+    if (!dia) return { slots: [], msg: 'No hay horario publicado para ese barbero.' };
+
+    const trabaja = Boolean(pick(dia, ['trabaja', 'work', 'activo'], false));
+    if (!trabaja) return { slots: [], msg: 'Ese barbero no trabaja ese día.' };
+
+    const inicio = pick(dia, ['hora_inicio', 'inicio', 'start'], null);
+    const fin = pick(dia, ['hora_fin', 'fin', 'end'], null);
+    if (!inicio || !fin) return { slots: [], msg: 'Horario incompleto para ese día.' };
+
+    const almI = pick(dia, ['almuerzo_inicio', 'inicio_almuerzo', 'lunch_start'], '');
+    const almF = pick(dia, ['almuerzo_fin', 'fin_almuerzo', 'lunch_end'], '');
+
+    const startMin = toMin(inicio);
+    const endMin = toMin(fin);
+    const lunchStart = almI ? toMin(almI) : null;
+    const lunchEnd = almF ? toMin(almF) : null;
+
+    const candidates = [];
+    for (let m = startMin; m + duracionMin <= endMin; m += 10) {
+      if (lunchStart !== null && lunchEnd !== null) {
+        const slotEnd = m + duracionMin;
+        const overlapsLunch = m < lunchEnd && slotEnd > lunchStart;
+        if (overlapsLunch) continue;
+      }
+      const hh = String(Math.floor(m / 60)).padStart(2, '0');
+      const mm = String(m % 60).padStart(2, '0');
+      candidates.push(`${hh}:${mm}`);
+    }
+
+    const freeSlots = [];
+    for (const hhmm of candidates) {
+      const startISO = new Date(`${dateStr}T${hhmm}:00`).toISOString();
+      const ok = await AvailabilityService.isFree(Number(personalId), startISO, Number(duracionMin));
+      if (ok) freeSlots.push(hhmm);
+    }
+
+    return { slots: freeSlots, msg: freeSlots.length ? '' : 'No hay horas disponibles para esa fecha.' };
+  }
+
+  async function refreshSlots() {
+    const personalId = Number(barbero.value || 0);
+    const servicioId = Number(servicio.value || 0);
+    const dateStr = fecha.value;
+
+    if (!personalId || !servicioId || !dateStr) {
+      timeSel.disabled = true;
+      timeSel.innerHTML = '<option value="">— Selecciona fecha, servicio y barbero —</option>';
+      timeHelp.textContent = '';
+      return;
+    }
+
+    const svc = state.serviciosFiltrados.find((s) => Number(s.id) === servicioId);
+    const durMin = Number(svc?.duracion_min || 0);
+    if (!durMin) {
+      timeSel.disabled = true;
+      timeSel.innerHTML = '<option value="">— Servicio sin duración —</option>';
+      timeHelp.textContent = '';
+      return;
+    }
+
+    timeSel.disabled = true;
+    timeSel.innerHTML = '<option value="">Cargando horas…</option>';
+    timeHelp.textContent = '';
+
+    try {
+      const { slots, msg } = await buildSlots({ personalId, dateStr, duracionMin: durMin });
+      timeHelp.textContent = msg || '';
+      if (!slots.length) {
+        timeSel.disabled = true;
+        timeSel.innerHTML = '<option value="">— Sin disponibilidad —</option>';
+        return;
+      }
+      timeSel.disabled = false;
+      timeSel.innerHTML = '<option value="">— Selecciona una hora —</option>' + slots.map((h) => `<option value="${h}">${h}</option>`).join('');
+    } catch (e) {
+      console.error('Error cargando disponibilidad:', e);
+      timeSel.disabled = true;
+      timeSel.innerHTML = '<option value="">— Sin disponibilidad —</option>';
+      timeHelp.textContent = 'No fue posible cargar horarios disponibles.';
+    }
+  }
+
+  async function loadServiciosByBarbero(personalId) {
+    resetServiciosYHoras();
+    if (!personalId) return;
+
+    try {
+      const { data: rel, error: relErr } = await PersonalServicioModel.listByPersonal(Number(personalId));
+      if (relErr) throw relErr;
+
+      const ids = new Set((rel || []).map((r) => Number(r.servicio_id)));
+      state.serviciosFiltrados = (state.servicios || []).filter((s) => ids.has(Number(s.id)) && s.activo !== false);
+
+      servicio.innerHTML = '<option value="">— Seleccione —</option>' + state.serviciosFiltrados
+        .map((s) => `<option value="${s.id}">${s.nombre}</option>`)
+        .join('');
+    } catch (e) {
+      console.error('Error cargando servicios por barbero:', e);
+      alert('No se pudieron cargar los servicios del barbero seleccionado.');
+    }
+  }
+
+  async function loadResourcesForBiz(negocioId) {
+    resetBarberos();
+    if (!negocioId) return;
+
+    try {
+      const { personal, servicios, error } = await BusinessService.detailWithResources(negocioId);
+      if (error) throw error;
+
+      state.personal = (personal || []).filter((p) => p?.id && p.activo !== false);
+      state.servicios = (servicios || []).filter((s) => s?.id && s.activo !== false);
+
+      barbero.innerHTML = '<option value="">— Seleccione —</option>' + state.personal
+        .map((p) => `<option value="${p.id}">${p.nombre_publico || `Barbero #${p.id}`}</option>`)
+        .join('');
+    } catch (e) {
+      console.error('Error cargando personal/servicios:', e);
+      alert('No se pudieron cargar los recursos de la barbería.');
+    }
+  }
+
+  function findBusinessByInput() {
+    const target = normText(bizName.value);
+    return state.negocios.find((n) => normText(n.nombre) === target) || null;
+  }
+
+  async function loadPublicBusinesses() {
+    try {
+      const { data, error } = await BusinessService.listPublic();
+      if (error) throw error;
+      state.negocios = (data || []).filter((n) => n?.id && n?.nombre);
+
+      bizlist.innerHTML = state.negocios
+        .map((n) => `<option value="${String(n.nombre).replace(/"/g, '&quot;')}">`)
+        .join('');
+
+      bizList.innerHTML = state.negocios
+        .map((n) => {
+          const mapUrl = (n.latitud != null && n.longitud != null)
+            ? `https://www.google.com/maps?q=${n.latitud},${n.longitud}`
+            : '';
+          return `
+            <div>${n.nombre}</div>
+            <button type="button" class="btn btn-pri" data-pick-biz="${n.id}" style="width:auto;padding:8px 12px;">Seleccionar</button>
+            ${mapUrl ? `<a class="btn btn-green" href="${mapUrl}" target="_blank" rel="noreferrer" style="width:auto;padding:8px 12px;text-decoration:none;">Ver en mapa</a>` : `<span class="hint">Sin ubicación</span>`}
+          `;
+        })
+        .join('');
+
+      const pre = findBusinessByInput();
+      if (pre) {
+        state.negocioSel = pre;
+        await loadResourcesForBiz(pre.id);
+      }
+    } catch (e) {
+      console.error('Error cargando barberías públicas:', e);
+      alert('No fue posible cargar las barberías disponibles.');
+    }
+  }
+
   burger?.addEventListener('click', (e) => {
     e.stopPropagation();
     if (!menu) return;
-    menu.style.display = (menu.style.display === 'block') ? 'none' : 'block';
+    menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
   });
+  menu?.addEventListener('click', (e) => e.stopPropagation());
   document.addEventListener('click', () => { if (menu) menu.style.display = 'none'; });
 
-  // Navegación del menú
-    // ✅ Menú dinámico según sesión
   (async () => {
-    const { initAuth, getUser, getRole } = await import('../../store/auth.js');
-    const { AuthController } = await import('../../controllers/AuthController.js');
-
     await initAuth();
 
     const user = getUser();
     const role = getRole();
-    const menuEl = document.getElementById('menu');
-    if (!menuEl) return;
+    if (!menu) return;
 
-    // Render items
     if (!user) {
-      menuEl.innerHTML = `
+      menu.innerHTML = `
         <a href="#" data-action="login">Iniciar sesión</a>
         <a href="#" data-action="register">Registrarme</a>
         <a href="#" data-action="registerBiz">Registrar mi negocio</a>
       `;
     } else {
-      menuEl.innerHTML = `
+      menu.innerHTML = `
         <a href="#" data-action="login">Iniciar sesión</a>
         <a href="#" data-action="register">Registrarme</a>
         <a href="#" data-action="registerBiz">Registrar mi negocio</a>
@@ -272,16 +521,12 @@ export function onMount() {
       `;
     }
 
-    // Handlers
-    menuEl.querySelectorAll('[data-action]').forEach(a => {
+    menu.querySelectorAll('[data-action]').forEach((a) => {
       a.addEventListener('click', async (ev) => {
         ev.preventDefault();
         const action = a.getAttribute('data-action');
-
-        // cerrar menú al seleccionar
         if (menu) menu.style.display = 'none';
 
-        // login / register: si hay sesión, cerrarla primero
         if (action === 'login') {
           if (getUser()) await AuthController.logout();
           navigate('/login');
@@ -295,9 +540,8 @@ export function onMount() {
         }
 
         if (action === 'registerBiz') {
-          // Solo barbero puede registrar negocio
           if (!getUser()) { navigate('/login'); return; }
-          if (getRole() !== 'barbero') { navigate('/'); return; }
+          if (role !== 'barbero') { navigate('/'); return; }
           navigate('/barbero/registrar-negocio');
           return;
         }
@@ -310,30 +554,91 @@ export function onMount() {
         if (action === 'logout') {
           await AuthController.logout();
           navigate('/');
-          return;
         }
       });
     });
   })();
 
+  document.getElementById('btn_programar')?.addEventListener('click', async (ev) => {
+    ev.preventDefault();
 
-  // Modal login (obligatorio para Programar / Comentario / Cancelar)
-  const modal = document.getElementById('modalAuth');
-  const openModal = () => { if (modal) modal.style.display = 'flex'; };
-  const closeModal = () => { if (modal) modal.style.display = 'none'; };
+    await initAuth();
+    const user = getUser();
+    const role = getRole();
 
-  document.getElementById('btn_programar')?.addEventListener('click', (ev) => { ev.preventDefault(); openModal(); });
-  document.getElementById('btn_comentario')?.addEventListener('click', (ev) => { ev.preventDefault(); openModal(); });
-  document.getElementById('btn_cancelar')?.addEventListener('click', (ev) => { ev.preventDefault(); openModal(); });
+    if (!user) {
+      openModal();
+      return;
+    }
+    if (role !== 'usuario') {
+      alert('Solo los usuarios cliente pueden programar citas.');
+      return;
+    }
+
+    const negocioId = Number(state.negocioSel?.id || 0);
+    const personalId = Number(barbero.value || 0);
+    const servicioId = Number(servicio.value || 0);
+    const dateStr = fecha.value;
+    const hhmm = timeSel.value;
+
+    if (!negocioId) return alert('Selecciona una barbería válida.');
+    if (!personalId) return alert('Selecciona un barbero.');
+    if (!servicioId) return alert('Selecciona un servicio.');
+    if (!dateStr) return alert('Selecciona la fecha de la cita.');
+    if (!hhmm) return alert('Selecciona la hora de la cita.');
+
+    const svc = state.serviciosFiltrados.find((s) => Number(s.id) === servicioId);
+    const durMin = Number(svc?.duracion_min || 0);
+    if (!durMin) return alert('El servicio no tiene duración válida.');
+
+    try {
+      const startISO = new Date(`${dateStr}T${hhmm}:00`).toISOString();
+      const free = await AvailabilityService.isFree(personalId, startISO, durMin);
+      if (!free) {
+        alert('Esa hora ya no está disponible. Selecciona otra.');
+        await refreshSlots();
+        return;
+      }
+
+      const payload = {
+        negocio_id: negocioId,
+        personal_id: personalId,
+        servicio_id: servicioId,
+        inicia_en: startISO
+      };
+      const nombreAsistente = (asistente.value || '').trim();
+      if (nombreAsistente) payload.nombre_invitado = nombreAsistente;
+
+      await ClienteAppointmentsController.agendar(payload);
+      alert('Cita programada correctamente.');
+      navigate('/cliente/cancelar');
+    } catch (e) {
+      console.error('Error programando cita pública:', e);
+      alert(`No se pudo programar la cita. ${e?.message || ''}`.trim());
+    }
+  });
+
+  document.getElementById('btn_comentario')?.addEventListener('click', async (ev) => {
+    ev.preventDefault();
+    await initAuth();
+    if (!getUser()) { openModal(); return; }
+    navigate('/comentarios');
+  });
+
+  document.getElementById('btn_cancelar')?.addEventListener('click', async (ev) => {
+    ev.preventDefault();
+    await initAuth();
+    if (!getUser()) { openModal(); return; }
+    if (getRole() !== 'usuario') { alert('Solo los usuarios cliente pueden cancelar/reagendar citas.'); return; }
+    navigate('/cliente/cancelar');
+  });
 
   document.getElementById('m_login')?.addEventListener('click', () => navigate('/login'));
   document.getElementById('m_reg')?.addEventListener('click', () => navigate('/registro'));
   document.getElementById('m_close')?.addEventListener('click', closeModal);
 
-  // Modal mapa (solo abrir/cerrar UI)
   const dontKnow = document.getElementById('dontKnow');
   const btnMap = document.getElementById('btnMap');
-  const modalMap = document.getElementById('modalMap');
   const closeMap = document.getElementById('closeMap');
 
   dontKnow?.addEventListener('change', () => {
@@ -342,4 +647,56 @@ export function onMount() {
   btnMap?.addEventListener('click', () => { if (modalMap) modalMap.style.display = 'flex'; });
   closeMap?.addEventListener('click', () => { if (modalMap) modalMap.style.display = 'none'; });
   modalMap?.addEventListener('click', (e) => { if (e.target === modalMap) modalMap.style.display = 'none'; });
+
+  bizList?.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-pick-biz]');
+    if (!btn) return;
+    const id = Number(btn.getAttribute('data-pick-biz'));
+    const b = state.negocios.find((n) => Number(n.id) === id);
+    if (!b) return;
+    state.negocioSel = b;
+    bizName.value = b.nombre;
+    if (modalMap) modalMap.style.display = 'none';
+    await loadResourcesForBiz(b.id);
+    updateSummary();
+  });
+
+  bizName?.addEventListener('change', async () => {
+    state.negocioSel = findBusinessByInput();
+    resetBarberos();
+    if (state.negocioSel?.id) {
+      await loadResourcesForBiz(state.negocioSel.id);
+    }
+    updateSummary();
+  });
+  bizName?.addEventListener('blur', async () => {
+    state.negocioSel = findBusinessByInput();
+    if (!state.negocioSel) {
+      resetBarberos();
+    }
+    updateSummary();
+  });
+
+  barbero?.addEventListener('change', async () => {
+    await loadServiciosByBarbero(barbero.value);
+    updateSummary();
+  });
+
+  servicio?.addEventListener('change', async () => {
+    const svc = state.serviciosFiltrados.find((s) => Number(s.id) === Number(servicio.value));
+    duracionHint.textContent = svc?.duracion_min ? `Duración: ${svc.duracion_min} min` : 'Duración: —';
+    await refreshSlots();
+    updateSummary();
+  });
+
+  fecha?.addEventListener('change', async () => {
+    await refreshSlots();
+    updateSummary();
+  });
+
+  timeSel?.addEventListener('change', updateSummary);
+  asistente?.addEventListener('input', updateSummary);
+
+  loadPublicBusinesses();
+  updateSummary();
 }
