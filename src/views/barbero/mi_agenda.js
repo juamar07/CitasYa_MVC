@@ -12,6 +12,68 @@ function pick(obj, keys, fallback = '—') {
   return fallback;
 }
 
+function escapeICS(text = '') {
+  return String(text)
+    .replace(/\\/g, '\\\\')
+    .replace(/\r?\n/g, '\\n')
+    .replace(/,/g, '\\,')
+    .replace(/;/g, '\\;');
+}
+
+function formatICSDate(dateLike) {
+  const d = new Date(dateLike);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+}
+
+function buildICS(events = []) {
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//CitasYa//MiAgenda//ES',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH'
+  ];
+
+  events.forEach((event, index) => {
+    const uid = `${event.id || `evt-${index}`}-miagenda@citasya.com`;
+    const dtstamp = formatICSDate(new Date());
+    const dtstart = formatICSDate(event.start);
+    const dtend = formatICSDate(event.end);
+
+    if (!dtstart || !dtend) return;
+
+    lines.push(
+      'BEGIN:VEVENT',
+      `UID:${uid}`,
+      `DTSTAMP:${dtstamp}`,
+      `DTSTART:${dtstart}`,
+      `DTEND:${dtend}`,
+      `SUMMARY:${escapeICS(event.summary || 'Cita Citas Ya')}`,
+      `DESCRIPTION:${escapeICS(event.description || '')}`,
+      `LOCATION:${escapeICS(event.location || '')}`,
+      'END:VEVENT'
+    );
+  });
+
+  lines.push('END:VCALENDAR');
+  return lines.join('\r\n');
+}
+
+function downloadICS(filename, content) {
+  const blob = new Blob([content], { type: 'text/calendar;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+
+  URL.revokeObjectURL(url);
+}
+
 export default async function BarberoMiAgendaView(){
   // 1) nombre del usuario (para “Bienvenido de nuevo, …”)
   const usuarioId = getUsuarioId();
@@ -56,6 +118,27 @@ export default async function BarberoMiAgendaView(){
 
   // 3) citas
   const citas = await BarberoAgendaController.miAgenda(ctx?.personal_id || null);
+
+    const citasForICS = (citas || []).map((c, index) => {
+    const asistente = c.nombre_invitado ?? c.usuarios?.nombre_completo ?? 'Cliente';
+    const servicio = c.servicios?.nombre ?? c.servicio ?? `Servicio ${c.servicio_id ?? ''}`;
+    const negocio = c.negocios?.nombre ?? 'Citas Ya';
+    const personal = c.personal?.nombre_publico ?? '';
+    const direccion = c.negocios?.direccion ?? '';
+
+    return {
+      id: c.id || `cita-${index}`,
+      start: c.inicia_en,
+      end: c.termina_en,
+      summary: `${servicio} - ${asistente}`,
+      description:
+        `Asistente: ${asistente}\n` +
+        `Servicio: ${servicio}\n` +
+        `Barbería: ${negocio}\n` +
+        `Barbero: ${personal || 'No especificado'}`,
+      location: direccion
+    };
+  });
 
   // 4) pintar citas (con fallback)
   const rows = (citas||[]).map(c => `
@@ -155,6 +238,10 @@ export default async function BarberoMiAgendaView(){
       sessionStorage.setItem('cy_edit_agenda_ctx', JSON.stringify(editContext));
     } catch (_e) {}
   }
+
+    try {
+      sessionStorage.setItem('cy_mi_agenda_ics_events', JSON.stringify(citasForICS));
+    } catch (_e) {}
 
   return `
   <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;600&display=swap" rel="stylesheet">
@@ -321,7 +408,54 @@ export function onMount(){
     navigate('/'); 
   });
 
-  document.getElementById('btnICS')?.addEventListener('click', ()=>{
-    alert('Exportación ICS pendiente de conectar en MVC (la UI ya está lista).');
+  document.getElementById('btnICS')?.addEventListener('click', () => {
+    try {
+      const raw = sessionStorage.getItem('cy_mi_agenda_ics_events') || '[]';
+      const events = JSON.parse(raw);
+
+      if (!Array.isArray(events) || !events.length) {
+        alert('No hay citas agendadas para exportar.');
+        return;
+      }
+
+      const ics = buildICS(events);
+      // calcular rango de fechas de las citas
+      const fechas = events
+        .map(e => new Date(e.start))
+        .filter(d => !isNaN(d));
+
+      fechas.sort((a, b) => a - b);
+
+      const inicio = fechas[0];
+      const fin = fechas[fechas.length - 1];
+
+      const meses = [
+        'Enero','Febrero','Marzo','Abril','Mayo','Junio',
+        'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'
+      ];
+
+      const diaInicio = inicio.getDate();
+      const diaFin = fin.getDate();
+      const mes = meses[inicio.getMonth()];
+      const año = inicio.getFullYear();
+
+      // obtener nombre del barbero
+      let nombreBarbero = 'Barbero';
+      try {
+        const ctx = JSON.parse(sessionStorage.getItem('citasya_ctx') || '{}');
+        nombreBarbero = ctx?.nombre || ctx?.nombre_publico || 'Barbero';
+      } catch {}
+
+      nombreBarbero = nombreBarbero.replace(/\s+/g, '-');
+
+      // nombre final del archivo
+      const fileName = `${diaInicio}-${diaFin}-${mes}-${año}-${nombreBarbero}-CitasYa.ics`;
+
+      downloadICS(fileName, ics);
+
+    } catch (error) {
+      console.error('Error exportando ICS:', error);
+      alert('No se pudo generar el archivo del calendario.');
+    }
   });
 }

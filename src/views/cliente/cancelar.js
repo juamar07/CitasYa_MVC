@@ -259,7 +259,6 @@ export default async function ClienteCancelarView(){
         <div>
           <label>Nombre del asistente</label>
           <input type="text" id="attendee" readonly placeholder="Tu sesión define el asistente">
-          <small class="muted">Esta búsqueda está ligada a tu sesión (no por texto) para evitar errores.</small>
         </div>
       </section>
 

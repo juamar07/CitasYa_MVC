@@ -103,16 +103,21 @@ export default async function BarberoOrganizarAgendaView() {
     }
     .back-button:hover{ background:#5c6bc0; color:#fff; }
 
-    .legal-outside{
-      margin: 18px auto 24px; padding:10px 12px;
-      max-width: calc(var(--container-w) + var(--container-pad)*2 + var(--container-bl));
-      text-align:center; color:#666; font-size:14px; line-height:1.35;
-    }
-
     @media (max-width: 768px){
       .row, .row-3{ grid-template-columns: 1fr; }
       .btn-slim{ width:100%; }
     }
+
+      .mvc-registro-negocio .legal-outside{
+          margin:18px auto 24px;
+          padding:10px 12px;
+          max-width: 1080px;
+          text-align:center;
+          color:#666;
+          font-size:14px;
+          line-height:1.35;
+        }
+
   </style>
 
   <header class="app-banner" role="banner">
@@ -799,55 +804,53 @@ export function onMount() {
           }
         }
 
-        const usuarioId = getUsuarioId();
-        let conjuntoId = state.currentConjuntoId;
+      const usuarioId = getUsuarioId();
+      let conjuntoId = state.currentConjuntoId;
 
-        if (!conjuntoId) {
-          const { data: existingConjunto } = await ConjuntoHorarioModel.latestByBusinessAndPersonal(
-            state.businessId,
-            Number(state.personalId)
-          );
+      if (!conjuntoId) {
+        const { data: existingConjunto } = await ConjuntoHorarioModel.latestByBusinessAndPersonal(
+          state.businessId,
+          Number(state.personalId)
+        );
 
-          if (
-            existingConjunto?.id &&
-            String(existingConjunto.fecha_inicio || '') === String(state.fecha_inicio || '') &&
-            String(existingConjunto.fecha_fin || '') === String(state.fecha_fin || '')
-          ) {
-            conjuntoId = existingConjunto.id;
-          }
+        if (
+          existingConjunto?.id &&
+          String(existingConjunto.fecha_inicio || '') === String(state.fecha_inicio || '') &&
+          String(existingConjunto.fecha_fin || '') === String(state.fecha_fin || '')
+        ) {
+          conjuntoId = existingConjunto.id;
         }
+      }
 
-        if (!conjuntoId) {
-          const { data: conjuntoData, error: conjuntoError } = await ConjuntoHorarioModel.create({
-            negocio_id: state.businessId,
-            personal_id: Number(state.personalId),
-            fecha_inicio: state.fecha_inicio,
-            fecha_fin: state.fecha_fin,
-            creado_por: usuarioId || null
-          });
-          if (conjuntoError) throw conjuntoError;
-          conjuntoId = conjuntoData?.id;
-        }
-
-        state.currentConjuntoId = conjuntoId;
+      if (!conjuntoId) {
+        const { data: conjuntoData, error: conjuntoError } = await ConjuntoHorarioModel.create({
+          negocio_id: state.businessId,
+          personal_id: Number(state.personalId),
+          fecha_inicio: state.fecha_inicio,
+          fecha_fin: state.fecha_fin,
+          creado_por: usuarioId || null
+        });
 
         if (conjuntoError) throw conjuntoError;
 
-        const nuevoConjuntoId = conjuntoData?.id;
-        if (!nuevoConjuntoId) throw new Error('No se pudo crear el conjunto de horario.');
+        conjuntoId = conjuntoData?.id;
+        if (!conjuntoId) throw new Error('No se pudo crear el conjunto de horario.');
+      }
 
-        const diasPayload = Object.entries(state.perDay).map(([dayId, cfg]) => ({
-          conjunto_horario_id: nuevoConjuntoId,
-          dia_id: Number(dayId),
-          trabaja: Boolean(cfg.trabaja),
-          hora_inicio: cfg.trabaja ? (cfg.hora_inicio || null) : null,
-          hora_fin: cfg.trabaja ? (cfg.hora_fin || null) : null,
-          almuerzo_inicio: cfg.trabaja && cfg.almuerzo_inicio ? cfg.almuerzo_inicio : null,
-          almuerzo_fin: cfg.trabaja && cfg.almuerzo_fin ? cfg.almuerzo_fin : null
-        }));
+      state.currentConjuntoId = conjuntoId;
 
-        const { error: diasError } = await DiaHorarioModel.upsert(diasPayload);
-        if (diasError) throw diasError;
+      const diasPayload = Object.entries(state.perDay).map(([dayId, cfg]) => ({
+        conjunto_horario_id: conjuntoId,
+        dia_id: Number(dayId),
+        trabaja: Boolean(cfg.trabaja),
+        hora_inicio: cfg.trabaja ? (cfg.hora_inicio || null) : null,
+        hora_fin: cfg.trabaja ? (cfg.hora_fin || null) : null,
+        almuerzo_inicio: cfg.trabaja && cfg.almuerzo_inicio ? cfg.almuerzo_inicio : null,
+        almuerzo_fin: cfg.trabaja && cfg.almuerzo_fin ? cfg.almuerzo_fin : null
+      }));
+
+      const { error: diasError } = await DiaHorarioModel.upsert(diasPayload);
+      if (diasError) throw diasError;
 
         if (agendaSummary) agendaSummary.value = buildSummaryText();
         alert('Agenda actualizada correctamente.');

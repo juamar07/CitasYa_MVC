@@ -92,36 +92,204 @@ export default async function PagosView(){
 
   return `
   <style>
-    body{ background:#eeeeee; margin:0; padding:20px; font-family: Arial, sans-serif; }
-    .container{
-      max-width: 980px; margin:0 auto; background:#fff; padding:20px;
-      border-radius:10px; border-left:4px solid #5c6bc0; box-shadow:0 4px 8px rgba(0,0,0,.05);
+    body{
+      background:#eeeeee;
+      margin:0;
+      padding:20px;
+      font-family: Arial, sans-serif;
     }
+
     .header{
-      background:#e6e9ee; border-radius:10px; padding:12px; display:flex; align-items:center; justify-content:space-between;
-      margin-bottom:14px;
+      width:100%;
+      box-sizing:border-box;
+      background:#e6e9ee;
+      border-radius:10px;
+      padding:12px 20px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      margin:0 0 16px 0;
     }
-    .back-button{ text-decoration:none; color:#5c6bc0; border:1px solid #5c6bc0; padding:8px 12px; border-radius:6px; }
-    .back-button:hover{ background:#5c6bc0; color:#fff; }
-    h1{ text-align:center; margin:10px 0 12px; font-size:34px; }
-    h2{ margin:18px 0 10px; font-size:26px; }
-    .muted{ color:#666; font-size:14px; }
-    .card{ border:1px dashed #cfd6e4; border-radius:8px; padding:12px; background:#fbfcff; }
-    .grid{ display:grid; grid-template-columns: 1fr 1fr; gap:14px; }
-    @media (max-width:800px){ .grid{ grid-template-columns:1fr; } }
-    label{ display:block; margin:10px 0 6px; color:#003366; font-weight:700; }
+
+    .header strong{
+      font-size:18px;
+      font-weight:700;
+    }
+
+    .back-button{
+      text-decoration:none;
+      color:#5c6bc0;
+      border:1px solid #5c6bc0;
+      padding:8px 12px;
+      border-radius:6px;
+      display:inline-flex;
+      align-items:center;
+    }
+
+    .back-button:hover{
+      background:#5c6bc0;
+      color:#fff;
+    }
+
+    .header img{
+      width:52px;
+      display:block;
+    }
+
+    .container{
+      max-width:980px;
+      margin:0 auto;
+      background:#fff;
+      padding:20px;
+      border-radius:10px;
+      border-left:4px solid #5c6bc0;
+      box-shadow:0 4px 8px rgba(0,0,0,.05);
+      box-sizing:border-box;
+    }
+
+    h1{
+      text-align:center;
+      margin:10px 0 12px;
+      font-size:34px;
+    }
+
+    h2{
+      margin:18px 0 10px;
+      font-size:26px;
+    }
+
+    .muted{
+      color:#666;
+      font-size:14px;
+    }
+
+    .card{
+      border:1px dashed #cfd6e4;
+      border-radius:8px;
+      padding:12px;
+      background:#fbfcff;
+    }
+
+    .grid{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:14px;
+    }
+
+    @media (max-width:800px){
+      .grid{
+        grid-template-columns:1fr;
+      }
+    }
+
+    label{
+      display:block;
+      margin:10px 0 6px;
+      color:#003366;
+      font-weight:700;
+    }
+
     input, select{
-      width:100%; padding:12px; border:2px solid #d7dbe3; border-radius:8px; font-size:16px; box-sizing:border-box;
+      width:100%;
+      padding:12px;
+      border:2px solid #d7dbe3;
+      border-radius:8px;
+      font-size:16px;
+      box-sizing:border-box;
     }
+
+    .plus-plan-row{
+      display:flex;
+      align-items:center;
+      gap:12px;
+      margin-top:14px;
+      color:#003366;
+      font-weight:700;
+      flex-wrap:wrap;
+    }
+
+    .plus-plan-row input[type="checkbox"]{
+      width:18px;
+      height:18px;
+      margin:0;
+      flex:0 0 auto;
+    }
+
+    .plus-plan-text{
+      display:flex;
+      align-items:baseline;
+      gap:6px;
+      flex-wrap:wrap;
+      line-height:1.3;
+    }
+
+    .plus-plan-text strong{
+      margin:0;
+    }
+
+    .plus-plan-text .plus-extra{
+      font-weight:400;
+      color:#003366;
+    }
+
+    .plus-plan-text .plus-price{
+      font-weight:700;
+      color:#003366;
+    }
+
     .btn{
-      width:75%; margin:14px auto 0; display:block; padding:12px 18px; border:none; border-radius:6px;
-      background:#66bb6a; color:#fff; font-weight:800; cursor:pointer;
+      width:75%;
+      margin:14px auto 0;
+      display:block;
+      padding:12px 18px;
+      border:none;
+      border-radius:6px;
+      background:#66bb6a;
+      color:#fff;
+      font-weight:800;
+      cursor:pointer;
     }
-    .btn:hover{ background:#43a047; }
-    table{ width:100%; border-collapse:collapse; margin-top:18px; }
-    th, td{ padding:12px; border-bottom:1px solid #e2e8f0; text-align:left; }
-    th{ background:#e7ecff; }
-    .footer{ text-align:center; color:#666; margin-top:18px; font-size:14px; }
+
+    .btn:hover{
+      background:#43a047;
+    }
+
+    table{
+      width:100%;
+      border-collapse:collapse;
+      margin-top:18px;
+    }
+
+    th, td{
+      padding:12px;
+      border-bottom:1px solid #e2e8f0;
+      text-align:left;
+    }
+
+    th{
+      background:#e7ecff;
+    }
+
+    .footer{
+      text-align:center;
+      color:#666;
+      margin-top:18px;
+      font-size:14px;
+    }
+
+    @media (max-width:800px){
+      .header{
+        padding:12px;
+      }
+
+      .btn{
+        width:100%;
+      }
+
+      .plus-plan-row{
+        align-items:flex-start;
+      }
+    }
   </style>
 
   <div class="header">
@@ -160,10 +328,14 @@ export default async function PagosView(){
       </div>
     </div>
 
-    <label style="display:flex; gap:10px; align-items:center; margin-top:10px;">
+    <div class="plus-plan-row">
       <input type="checkbox" id="plusPlan" />
-      <strong>Citas Ya Plus</strong> (tokens ilimitados 1 mes) — ${formatCOP(PLUS_PRICE)}
-    </label>
+      <div class="plus-plan-text">
+        <strong>Citas Ya Plus</strong>
+        <span class="plus-extra">(tokens ilimitados 1 mes)</span>
+        <span class="plus-price">— ${formatCOP(PLUS_PRICE)}</span>
+      </div>
+    </div>
 
     <div class="grid" style="margin-top:10px;">
       <div>
@@ -301,17 +473,29 @@ export function onMount(){
 
   // ✅ AQUÍ QUEDA LA REDIRECCIÓN A MERCADO PAGO
   // (después de registrar en BD)
-  document.getElementById('btnPay')?.addEventListener('click', async ()=>{
-    try{
+  document.getElementById('btnPay')?.addEventListener('click', async (e) => {
+    e.preventDefault();
+
+    try {
       const { tokens, monto, paymentLink } = recalc();
       const metodo_id = metodoSelect?.value;
       const estado_id = estadoSelect?.value;
 
-      if (!monto) return alert('Selecciona un paquete, cantidad manual o Citas Ya Plus.');
-      if (!metodo_id) return alert('Selecciona un método.');
-      if (!estado_id) return alert('Selecciona un estado.');
+      if (!monto) {
+        alert('Selecciona un paquete, cantidad manual o Citas Ya Plus.');
+        return;
+      }
 
-      // 1) Registrar compra en BD (incluye ref_externa = link)
+      if (!metodo_id) {
+        alert('Selecciona un método.');
+        return;
+      }
+
+      if (!estado_id) {
+        alert('Selecciona un estado.');
+        return;
+      }
+
       await PagosController.crear({
         metodo_id: Number(metodo_id),
         estado_id: Number(estado_id),
@@ -320,12 +504,10 @@ export function onMount(){
         ref_externa: paymentLink
       });
 
-      // 2) Redirigir al link de Mercado Pago
-      window.location.href = paymentLink;
-
-    } catch (e){
-      alert(e?.message || 'No se pudo iniciar el pago.');
+      window.open(paymentLink, '_blank', 'noopener,noreferrer');
+    } catch (e) {
       console.error(e);
+      alert(e?.message || 'No se pudo iniciar el pago.');
     }
   });
 }

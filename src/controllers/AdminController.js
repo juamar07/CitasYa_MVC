@@ -1,18 +1,23 @@
 import { AdminService } from '../services/AdminService.js';
 
 export const AdminController = {
-  pendientes(){
+  pendientes() {
     return AdminService.pendingBusinesses();
   },
-  aprobar(id){
+
+  aprobar(id) {
     return AdminService.approveBusiness(id);
   },
 
-  // ✅ NUEVO
-  barberosPendientes(){
+  barberosPendientes() {
     return AdminService.pendingBarbers();
   },
-  aprobarBarbero(id){
+
+  aprobarBarbero(id) {
     return AdminService.approveBarber(id);
+  },
+
+  dashboardData() {
+    return AdminService.dashboardData();
   }
 };

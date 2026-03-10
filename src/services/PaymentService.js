@@ -1,4 +1,6 @@
 import { CompraModel } from '../models/CompraModel.js';
+import { MetodoPagoModel } from '../models/MetodoPagoModel.js';
+import { EstadoPagoModel } from '../models/EstadoPagoModel.js';
 import { BusinessService } from './BusinessService.js';
 
 async function resolveNegocioId(){
@@ -13,14 +15,30 @@ async function resolveNegocioId(){
 }
 
 export const PaymentService = {
-  // ✅ Alias para que PagosController no reviente
   async myPayments(){
     return this.listMine();
   },
 
   async listMine(){
     const negocioId = await resolveNegocioId();
-    return CompraModel.listByNegocio(negocioId);
+    const { data, error } = await CompraModel.listByNegocio(negocioId);
+    if (error) throw error;
+    return data || [];
+  },
+
+  async metadata(){
+    const [metodosRes, estadosRes] = await Promise.all([
+      MetodoPagoModel.list(),
+      EstadoPagoModel.list()
+    ]);
+
+    if (metodosRes.error) throw metodosRes.error;
+    if (estadosRes.error) throw estadosRes.error;
+
+    return {
+      metodos: metodosRes.data || [],
+      estados: estadosRes.data || []
+    };
   },
 
   async create(payload){
@@ -28,7 +46,7 @@ export const PaymentService = {
 
     const metodo_id = payload.metodo_id ?? payload.metodo_pago_id ?? payload.metodoId;
     const estado_id = payload.estado_id ?? payload.estado_pago_id ?? payload.estadoId;
-    const tokens    = payload.tokens ?? payload.tokens_compra ?? null;
+    const tokens = payload.tokens ?? payload.tokens_compra ?? null;
 
     const monto_cop =
       payload.monto_cop ??
@@ -51,6 +69,8 @@ export const PaymentService = {
       ref_externa
     };
 
-    return CompraModel.create(insertPayload);
+    const { data, error } = await CompraModel.create(insertPayload);
+    if (error) throw error;
+    return data;
   }
 };

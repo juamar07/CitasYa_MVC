@@ -111,11 +111,18 @@ export default async function ClienteAgendarPublicoView({ query }) {
     .app-banner .banner-inner{
       position: relative;
       display:grid;
-      grid-template-columns:auto 1fr auto;
+      grid-template-columns: 56px 1fr 56px;
       align-items:center;
       gap:10px;
       width:100%;
       padding:0 12px;
+    }
+
+    .banner-title{
+      text-align:center;
+      font-size:18px;
+      font-weight:700;
+      color:#233247;
     }
     .banner-logo img{ width:52px; display:block; }
     /* Menú hamburguesa */
@@ -165,6 +172,14 @@ export default async function ClienteAgendarPublicoView({ query }) {
   </header>
 
   <div class="container">
+    <div style="margin-bottom: 25px;">
+      <img
+        src="assets/img/BannerCitasYa.png"
+        alt="Banner Barbería Citas Ya"
+        style="width: 100%; height: auto; border-radius: 4px; display: block; box-shadow: 0 2px 5px rgba(0,0,0,0.1);"
+      >
+    </div>
+
     <h1>Programación de Citas</h1>
 
     <label>Ingrese nombre completo del asistente</label>
@@ -182,12 +197,12 @@ export default async function ClienteAgendarPublicoView({ query }) {
     </div>
     <div class="hint">La búsqueda ignora mayúsculas y acentos.</div>
 
+    <label>Seleccione el barbero</label>
+    <select id="barbero"><option value="">— Seleccione —</option></select>
+
     <label>Seleccione el servicio</label>
     <select id="servicio"><option value="">— Seleccione —</option></select>
     <div id="duracionHint" class="hint">Duración: —</div>
-
-    <label>Seleccione el barbero</label>
-    <select id="barbero"><option value="">— Seleccione —</option></select>
 
     <div class="row-2">
       <div>
@@ -197,7 +212,7 @@ export default async function ClienteAgendarPublicoView({ query }) {
       <div>
         <label>Seleccione la hora de la cita</label>
         <select id="timeSel" disabled>
-          <option value="">— Selecciona fecha, servicio y barbero —</option>
+          <option value="">— Selecciona fecha, barbero y servicio —</option>
         </select>
         <div id="timeHelp" class="hint"></div>
       </div>
@@ -205,7 +220,9 @@ export default async function ClienteAgendarPublicoView({ query }) {
 
     <button id="btn_programar" class="btn btn-green w-75 btn-center">Programar cita</button>
 
-    <textarea id="resumen" class="w-75 btn-center" style="width:100%;min-height:68px;" placeholder="Aquí verás el resumen de tu cita…"></textarea>
+   <textarea id="resumen" class="w-75 btn-center"
+    style="width:100%;min-height:160px;font-family:monospace;line-height:1.4;"
+    placeholder="Aquí verás el resumen de tu cita…"></textarea>
 
     <div class="row-2">
       <button id="btn_comentario" class="btn btn-pri">Déjanos tu comentario</button>
@@ -299,7 +316,7 @@ export function onMount() {
     servicio.innerHTML = '<option value="">— Seleccione —</option>';
     duracionHint.textContent = 'Duración: —';
     timeSel.disabled = true;
-    timeSel.innerHTML = '<option value="">— Selecciona fecha, servicio y barbero —</option>';
+    timeSel.innerHTML = '<option value="">— Selecciona fecha, barbero y servicio —</option>';
     timeHelp.textContent = '';
   }
 
@@ -375,7 +392,7 @@ export function onMount() {
 
     if (!personalId || !servicioId || !dateStr) {
       timeSel.disabled = true;
-      timeSel.innerHTML = '<option value="">— Selecciona fecha, servicio y barbero —</option>';
+      timeSel.innerHTML = '<option value="">— Selecciona fecha, barbero y servicio —</option>';
       timeHelp.textContent = '';
       return;
     }
